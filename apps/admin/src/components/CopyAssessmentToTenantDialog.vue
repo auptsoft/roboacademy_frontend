@@ -20,7 +20,9 @@ import { copyAssessmentToTenants } from '@/api/assessment'
 // tenant - something the platform admin can't know without browsing that tenant first. So this
 // is one target at a time: pick a tenant, browse its courses/modules via the same from-tenant
 // endpoints the import flow uses, then copy. Repeat for another tenant if needed.
-const PLATFORM_TENANT_ID = import.meta.env.VITE_PLATFORM_TENANT_ID
+import { getEnv } from '@/lib/runtime-env'
+
+const PLATFORM_TENANT_ID = getEnv('VITE_PLATFORM_TENANT_ID')
 
 const props = defineProps<{ open: boolean; assessmentId: string }>()
 const emit = defineEmits<{ 'update:open': [boolean] }>()

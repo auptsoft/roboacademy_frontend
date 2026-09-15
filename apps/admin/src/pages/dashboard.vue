@@ -15,10 +15,11 @@ import { listSessions } from '@/api/roboticsLab'
 import { listAttempts } from '@/api/assessment'
 import { hasPermission, getImpersonationTarget } from '@/store/auth'
 import { getStoredTenantId } from '@/api/session'
+import { getEnv } from '@/lib/runtime-env'
 
 const router = useRouter()
 
-const PLATFORM_TENANT_ID = import.meta.env.VITE_PLATFORM_TENANT_ID
+const PLATFORM_TENANT_ID = getEnv('VITE_PLATFORM_TENANT_ID')
 
 const tenants = ref<Tenant[]>([])
 const users = ref<AdminUser[]>([])

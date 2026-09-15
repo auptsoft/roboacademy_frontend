@@ -19,6 +19,8 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RoboAcademy Admin</title>
+    <!-- Must run before /src/main.ts so window.__env__ is set first — see apps/admin/src/lib/runtime-env.ts -->
+    <script src="/env.js"></script>
   </head>
   <body>
     <div id="app"></div>

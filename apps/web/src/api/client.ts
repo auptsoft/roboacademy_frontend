@@ -1,7 +1,8 @@
 import { clearSession, getAccessToken, getStoredTenantId } from '@/api/session'
+import { getEnv } from '@/lib/runtime-env'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
-const PLATFORM_TENANT_ID = import.meta.env.VITE_PLATFORM_TENANT_ID
+const API_BASE_URL = getEnv('VITE_API_BASE_URL')
+const PLATFORM_TENANT_ID = getEnv('VITE_PLATFORM_TENANT_ID')
 
 // The tenant to address is captured from ?tenantId= on the auth page and persisted to
 // localStorage, so it sticks across navigation regardless of the current URL.

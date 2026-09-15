@@ -27,6 +27,7 @@ import { ApiError } from '@/api/client'
 import { usePagedList } from '@/composables/usePagedList'
 import { listTenants, createTenant, deactivateTenant, reactivateTenant, type Tenant } from '@/api/tenancy'
 import { enterTenant, hasPermission, isImpersonating } from '@/store/auth'
+import { getEnv } from '@/lib/runtime-env'
 
 const router = useRouter()
 
@@ -49,7 +50,7 @@ async function submitEnterTenant(tenant: Tenant) {
   }
 }
 
-const PLATFORM_TENANT_ID = import.meta.env.VITE_PLATFORM_TENANT_ID
+const PLATFORM_TENANT_ID = getEnv('VITE_PLATFORM_TENANT_ID')
 
 const {
   items: tenants,

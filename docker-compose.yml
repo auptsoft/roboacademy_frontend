@@ -1,0 +1,21 @@
+# Local build + run, mirroring docker-compose.prod.yml but building the images
+# from source instead of pulling from GHCR. Config is runtime (see entrypoint.sh
+# in each app), not a build arg, so it's just passed as container environment.
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    env_file:
+      - .env
+    ports:
+      - "8081:80"
+
+  admin:
+    build:
+      context: .
+      dockerfile: Dockerfile.admin
+    env_file:
+      - .env
+    ports:
+      - "8082:80"

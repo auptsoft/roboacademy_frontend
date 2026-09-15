@@ -1,6 +1,9 @@
 import { ref } from 'vue'
+import { applyDocumentTitle, applyFavicon } from '@roboacademy/ui'
 import { getTenantId } from '@/api/client'
 import { getTenantBranding } from '@/api/tenancy'
+
+const TITLE_SUFFIX = 'Admin'
 
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/
 
@@ -50,10 +53,14 @@ export async function applyTenantBranding(): Promise<void> {
       root.removeProperty('--secondary-foreground')
     }
     tenantLogoUrl.value = branding.logoUrl
+    applyDocumentTitle(branding.name, { suffix: TITLE_SUFFIX })
+    applyFavicon(branding.logoUrl)
   } catch {
     // No branding available (e.g. anonymous/platform tenant, or a network error) — reset to default
     // rather than leaving a previously-active tenant's branding applied.
     resetBrandColors()
     tenantLogoUrl.value = null
+    applyDocumentTitle(null, { suffix: TITLE_SUFFIX })
+    applyFavicon(null)
   }
 }

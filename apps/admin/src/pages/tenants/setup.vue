@@ -30,8 +30,9 @@ import {
 } from '@/api/tenancy'
 import { createTenantAdmin } from '@/api/identity'
 import { applyTenantBranding } from '@/branding'
+import { getEnv } from '@/lib/runtime-env'
 
-const PLATFORM_TENANT_ID = import.meta.env.VITE_PLATFORM_TENANT_ID
+const PLATFORM_TENANT_ID = getEnv('VITE_PLATFORM_TENANT_ID')
 
 const route = useRoute()
 const router = useRouter()

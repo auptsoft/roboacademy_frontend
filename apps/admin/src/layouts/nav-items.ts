@@ -5,8 +5,9 @@ import {
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
 import { getActiveTenantId } from '@/store/auth'
+import { getEnv } from '@/lib/runtime-env'
 
-const PLATFORM_TENANT_ID = import.meta.env.VITE_PLATFORM_TENANT_ID
+const PLATFORM_TENANT_ID = getEnv('VITE_PLATFORM_TENANT_ID')
 
 export interface AdminNavLeaf {
   id: string

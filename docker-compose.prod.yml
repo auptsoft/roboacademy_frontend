@@ -1,0 +1,21 @@
+# On the server:
+#   cp .env.prod.example .env.prod   # then fill in the real values, never commit this file
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml pull
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
+
+services:
+  web:
+    image: ${WEB_IMAGE}
+    restart: unless-stopped
+    env_file:
+      - .env.prod
+    ports:
+      - "8081:80"
+
+  admin:
+    image: ${ADMIN_IMAGE}
+    restart: unless-stopped
+    env_file:
+      - .env.prod
+    ports:
+      - "8082:80"

@@ -17,8 +17,9 @@ import { ApiError } from '@/api/client'
 import { usePagedList } from '@/composables/usePagedList'
 import TenantComboBox from '@/components/TenantComboBox.vue'
 import { listTenantCourses, importCourseFromTenant, type CourseCatalogItem } from '@/api/learning'
+import { getEnv } from '@/lib/runtime-env'
 
-const PLATFORM_TENANT_ID = import.meta.env.VITE_PLATFORM_TENANT_ID
+const PLATFORM_TENANT_ID = getEnv('VITE_PLATFORM_TENANT_ID')
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ 'update:open': [boolean]; imported: [courseId: string] }>()

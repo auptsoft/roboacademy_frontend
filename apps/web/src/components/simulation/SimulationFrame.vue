@@ -5,6 +5,7 @@ import { RaButton, RaChip } from '@roboacademy/ui'
 import { joinLabSession, type LabSessionJoinInfo } from '@/api/robotics-lab'
 import { useSimulationBridge } from '@/composables/useSimulationBridge'
 import type { SessionMode } from '@/composables/simulation-protocol'
+import { getEnv } from '@/lib/runtime-env'
 
 const props = defineProps<{
   sessionId: string
@@ -68,8 +69,8 @@ function onIframeLoad() {
     iframeUrl: info.iframeUrl,
     authToken: info.accessToken,
     sessionId: props.sessionId,
-    apiBaseUrl: import.meta.env.VITE_BOTNOVA_API_BASE_URL ?? '',
-    ...(import.meta.env.VITE_BOTNOVA_WS_URL ? { wsUrl: import.meta.env.VITE_BOTNOVA_WS_URL } : {}),
+    apiBaseUrl: getEnv('VITE_BOTNOVA_API_BASE_URL'),
+    ...(getEnv('VITE_BOTNOVA_WS_URL') ? { wsUrl: getEnv('VITE_BOTNOVA_WS_URL') } : {}),
     mode: props.mode,
   })
 }

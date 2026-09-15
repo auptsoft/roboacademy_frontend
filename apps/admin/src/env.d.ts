@@ -8,3 +8,8 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+interface Window {
+  /** Set by /env.js, generated at container startup — see entrypoint.sh. */
+  __env__?: Partial<Record<keyof ImportMetaEnv, string>>
+}
