@@ -1,0 +1,57 @@
+@import "@roboacademy/ui/style.css";
+@import "shadcn/tailwind.css";
+
+/* ============================================================
+   Admin design bridge — unifies the shared @roboacademy/ui token
+   set with the local shadcn tokens so both component systems
+   render from one palette/radius scale. Scoped to apps/admin only.
+   ============================================================ */
+:root,
+.dark {
+  /* Fallback brand colors when a tenant has no custom Primary/SecondaryColor.
+     Overridden at runtime per-tenant via inline styles on <html>
+     (see src/branding.ts), which win over these rules. Secondary previously had
+     no brand fallback and just inherited shadcn's neutral gray --secondary,
+     which is why role chips / secondary buttons showed no brand presence. */
+  --primary: #3b82f6;
+  --primary-foreground: #ffffff;
+  --secondary: #7c5cff;
+  --secondary-foreground: #ffffff;
+
+  /* Brand tokens now track --primary instead of a hardcoded blue. */
+  --brand-blue: var(--primary);
+  --brand-blue-hover: color-mix(in srgb, var(--primary) 85%, white);
+  --brand-blue-press: color-mix(in srgb, var(--primary) 85%, black);
+  --brand-blue-soft: color-mix(in srgb, var(--primary) 12%, transparent);
+  --brand-blue-ring: color-mix(in srgb, var(--primary) 30%, transparent);
+
+  /* Focus ring now tracks --primary so the brand color shows up on every focusable
+     input/button, not just the handful of solid-fill buttons that use bg-primary. */
+  --ring: color-mix(in srgb, var(--primary) 50%, var(--border));
+
+  /* Neutral scale bridged onto the shadcn tokens, tinted with the tenant's
+     brand color (graduated 2%-10%) so surfaces carry brand presence, not
+     just solid fills. */
+  --bg-0: color-mix(in srgb, var(--primary) 1%, var(--background));
+  --bg-1: color-mix(in srgb, var(--primary) 1%, var(--sidebar));
+  --bg-2: color-mix(in srgb, var(--primary) 1%, var(--card));
+  --bg-3: color-mix(in srgb, var(--primary) 5%, var(--muted));
+  --bg-4: color-mix(in srgb, var(--primary) 5%, var(--accent));
+  --bg-5: color-mix(in srgb, var(--primary) 5%, var(--border));
+  --fg-1: var(--foreground);
+  --fg-2: var(--foreground);
+  --fg-3: var(--muted-foreground);
+  --fg-4: var(--muted-foreground);
+  --fg-5: var(--muted-foreground);
+  --line-1: color-mix(in srgb, var(--primary) 10%, var(--border));
+  --line-2: color-mix(in srgb, var(--primary) 10%, var(--border));
+  --line-3: color-mix(in srgb, var(--primary) 10%, var(--border));
+
+  /* Flatten corners to match the rounded-none shadcn look; pill stays round. */
+  --ra-xs: 0px;
+  --ra-sm: 0px;
+  --ra-md: 0px;
+  --ra-lg: 0px;
+  --ra-xl: 0px;
+  --ra-2xl: 0px;
+}

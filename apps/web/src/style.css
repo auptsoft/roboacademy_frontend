@@ -1,0 +1,17 @@
+@import "@roboacademy/ui/style.css";
+@import "shadcn/tailwind.css";
+
+:root {
+  /* Text color for content placed on top of --brand-blue (e.g. the auth page's submit
+     button); overridden per-tenant by applyTenantBranding() when a custom primaryColor
+     is light enough to need dark text instead. */
+  --brand-blue-foreground: #ffffff;
+}
+
+.link-active {
+  @apply text-primary
+}
+
+.simple-link {
+  @apply text-gray-400 hover:text-black dark:hover:text-white
+}

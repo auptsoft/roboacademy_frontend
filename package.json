@@ -1,0 +1,25 @@
+{
+  "name": "roboacademy",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev -w @roboacademy/web",
+    "dev:admin": "npm run dev -w @roboacademy/admin",
+    "build:web": "npm run build -w @roboacademy/web",
+    "build:admin": "npm run build -w @roboacademy/admin",
+    "build": "npm run build:web && npm run build:admin",
+    "preview:web": "npm run preview -w @roboacademy/web",
+    "preview:admin": "npm run preview -w @roboacademy/admin"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.2"
+  },
+  "dependencies": {
+    "pdfvuer": "^1.10.0"
+  }
+}

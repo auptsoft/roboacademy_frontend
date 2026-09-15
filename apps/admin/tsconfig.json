@@ -1,0 +1,15 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ],
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@roboacademy/ui": ["../../packages/ui/src/index.ts"],
+      "@roboacademy/ui/*": ["../../packages/ui/src/*"]
+    }
+  }
+}
