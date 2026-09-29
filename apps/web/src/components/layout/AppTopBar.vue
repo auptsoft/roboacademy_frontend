@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
-import { Cpu, Bell } from 'lucide-vue-next'
+import { Cpu } from 'lucide-vue-next'
 import ProfileMenu from './ProfileMenu.vue'
+import NotificationBell from './NotificationBell.vue'
 import type { TenantBranding } from '@/api/tenancy.ts'
 
 const router = useRouter()
@@ -25,9 +26,7 @@ const props = defineProps<{
     </div>
 
     <div class="flex items-center gap-8 max-md:gap-4">
-      <button class="bg-transparent border-0 p-0 cursor-pointer text-(--fg-2) hover:text-(--heading)" aria-label="Notifications">
-        <Bell :size="22" :stroke-width="1.75" />
-      </button>
+      <NotificationBell />
       <ProfileMenu />
     </div>
   </header>

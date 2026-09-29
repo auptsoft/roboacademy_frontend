@@ -1,31 +1,37 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { RaCard, RaChip } from '@roboacademy/ui'
 import { X } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import Input from '@/components/ui/input.vue'
+import SearchMultiSelect, { type SearchOption } from '@/components/SearchMultiSelect.vue'
+import { searchUsers, searchClasses, dueDateToIso } from '@/lib/pickers'
 import { ApiError } from '@/api/client'
 import {
   listCourseCatalog,
   listCourseEnrolments,
-  adminEnrolUser,
+  getCourse,
+  adminBulkEnrol,
+  adminBulkWithdraw,
   adminWithdrawEnrolment,
   listPaths,
   listPathEnrolments,
   type CourseCatalogItem,
   type CourseEnrolmentItem,
+  type EnrolmentSource,
   type PathListItem,
   type PathEnrolmentItem,
 } from '@/api/learning'
-import { listUsers, type AdminUser } from '@/api/identity'
 
+const route = useRoute()
 const mode = ref<'courses' | 'paths'>('courses')
 
 // Course picker
 const courseQuery = ref('')
 const courseResults = ref<CourseCatalogItem[]>([])
-const selectedCourse = ref<CourseCatalogItem | null>(null)
+const selectedCourse = ref<Pick<CourseCatalogItem, 'id' | 'title'> | null>(null)
 let courseSearchDebounce: ReturnType<typeof setTimeout> | undefined
 
 watch(courseQuery, (value) => {
@@ -42,8 +48,9 @@ watch(courseQuery, (value) => {
   }, 300)
 })
 
-function pickCourse(course: CourseCatalogItem) {
+function pickCourse(course: Pick<CourseCatalogItem, 'id' | 'title'>) {
   selectedCourse.value = course
+  selectedUserIds.value = new Set()
   courseQuery.value = course.title
   courseResults.value = []
   loadEnrolments()
@@ -134,49 +141,94 @@ async function withdraw(item: CourseEnrolmentItem) {
   }
 }
 
-// User picker (enrol)
-const userQuery = ref('')
-const userResults = ref<AdminUser[]>([])
-const selectedUser = ref<AdminUser | null>(null)
+// Enrol users and/or whole classes (bulk)
+const enrolUsers = ref<SearchOption[]>([])
+const enrolClasses = ref<SearchOption[]>([])
+const enrolDueDate = ref('')
 const enrolling = ref(false)
-let userSearchDebounce: ReturnType<typeof setTimeout> | undefined
-
-watch(userQuery, (value) => {
-  // Picking a result sets userQuery to the picked user's name — skip re-searching that.
-  if (selectedUser.value && value === selectedUser.value.fullName) return
-  clearTimeout(userSearchDebounce)
-  selectedUser.value = null
-  if (value.trim().length < 2) {
-    userResults.value = []
-    return
-  }
-  userSearchDebounce = setTimeout(async () => {
-    const result = await listUsers(1, 8, value)
-    userResults.value = result.items
-  }, 300)
-})
-
-function pickUser(user: AdminUser) {
-  selectedUser.value = user
-  userQuery.value = user.fullName
-  userResults.value = []
-}
 
 async function submitEnrol() {
-  if (!selectedCourse.value || !selectedUser.value) return
+  if (!selectedCourse.value || (enrolUsers.value.length === 0 && enrolClasses.value.length === 0)) return
   enrolling.value = true
   try {
-    await adminEnrolUser(selectedCourse.value.id, selectedUser.value.userId)
-    toast.success('User enrolled.')
-    userQuery.value = ''
-    selectedUser.value = null
+    const result = await adminBulkEnrol(selectedCourse.value.id, {
+      userIds: enrolUsers.value.map((u) => u.id),
+      classIds: enrolClasses.value.map((c) => c.id),
+      dueAt: dueDateToIso(enrolDueDate.value),
+    })
+    toast.success(
+      result.alreadyEnrolled > 0
+        ? `${result.enrolled} enrolled. ${result.alreadyEnrolled} already enrolled (now marked as assigned).`
+        : `${result.enrolled} enrolled.`,
+    )
+    enrolUsers.value = []
+    enrolClasses.value = []
+    enrolDueDate.value = ''
     await loadEnrolments()
   } catch (error) {
-    toast.error(error instanceof ApiError ? error.message : 'Failed to enrol user.')
+    toast.error(error instanceof ApiError ? error.message : 'Failed to enrol.')
   } finally {
     enrolling.value = false
   }
 }
+
+// Bulk withdraw
+const selectedUserIds = ref<Set<string>>(new Set())
+const activeEnrolments = computed(() => enrolments.value.filter((e) => e.status === 'Active'))
+const allActiveSelected = computed(
+  () => activeEnrolments.value.length > 0 && activeEnrolments.value.every((e) => selectedUserIds.value.has(e.userId)),
+)
+
+function toggleSelected(userId: string) {
+  const next = new Set(selectedUserIds.value)
+  if (next.has(userId)) next.delete(userId)
+  else next.add(userId)
+  selectedUserIds.value = next
+}
+
+function toggleAll() {
+  selectedUserIds.value = allActiveSelected.value
+    ? new Set()
+    : new Set(activeEnrolments.value.map((e) => e.userId))
+}
+
+const bulkWithdrawing = ref(false)
+
+async function withdrawSelected() {
+  if (!selectedCourse.value || selectedUserIds.value.size === 0) return
+  const count = selectedUserIds.value.size
+  if (!window.confirm(`Withdraw ${count} ${count === 1 ? 'user' : 'users'} from ${selectedCourse.value.title}?`)) return
+  bulkWithdrawing.value = true
+  try {
+    const result = await adminBulkWithdraw(selectedCourse.value.id, [...selectedUserIds.value])
+    toast.success(`${result.withdrawn} withdrawn.`)
+    selectedUserIds.value = new Set()
+    await loadEnrolments()
+  } catch (error) {
+    toast.error(error instanceof ApiError ? error.message : 'Failed to withdraw.')
+  } finally {
+    bulkWithdrawing.value = false
+  }
+}
+
+const SOURCE_LABELS: Record<EnrolmentSource, string> = {
+  Self: 'Self-enrolled',
+  Path: 'Via path',
+  Admin: 'Admin',
+  Class: 'Class',
+}
+
+// Deep link from a course page: /enrollments?courseId=...
+onMounted(async () => {
+  const courseId = route.query.courseId
+  if (typeof courseId !== 'string') return
+  try {
+    const course = await getCourse(courseId)
+    pickCourse({ id: course.id, title: course.title })
+  } catch {
+    // Unknown/inaccessible course - leave the picker empty.
+  }
+})
 
 function statusTone(status: string): 'student' | 'info' | 'neutral' {
   if (status === 'Active') return 'student'
@@ -190,7 +242,7 @@ function statusTone(status: string): 'student' | 'info' | 'neutral' {
     <div>
       <h1 class="m-0 text-[32px] font-bold tracking-[-0.01em] text-(--fg-1)">Enrollments</h1>
       <p class="mt-1.5 text-sm text-(--fg-3)">
-        {{ mode === 'courses' ? 'Enrol or withdraw a user from a course on their behalf.' : 'See who has started a learning path.' }}
+        {{ mode === 'courses' ? 'Enrol students or whole classes in a course, or withdraw them.' : 'See who has started a learning path.' }}
       </p>
     </div>
 
@@ -231,7 +283,7 @@ function statusTone(status: string): 'student' | 'info' | 'neutral' {
                 class="block w-full px-2.5 py-1.5 text-left text-[13px] text-(--fg-2) hover:bg-(--bg-3)"
                 @click="pickCourse(c)"
               >
-                {{ c.title }} <span class="text-(--fg-4)">{{ c.state }}</span>
+                {{ c.title }} <span class="text-(--fg-4)">{{ c.state }} · {{ c.visibility }}</span>
               </button>
             </div>
           </div>
@@ -240,8 +292,37 @@ function statusTone(status: string): 'student' | 'info' | 'neutral' {
 
       <template v-if="selectedCourse">
         <RaCard :padding="0" class="overflow-hidden">
-          <div class="border-b border-(--line-1) py-5 px-6">
+          <div class="flex items-center justify-between gap-3 border-b border-(--line-1) py-5 px-6 max-sm:flex-col max-sm:items-start">
             <h3 class="m-0 text-lg font-bold text-(--fg-1)">Enrolled Users — {{ selectedCourse.title }}</h3>
+            <Button
+              v-if="selectedUserIds.size > 0"
+              variant="outline"
+              size="sm"
+              :disabled="bulkWithdrawing"
+              @click="withdrawSelected"
+            >
+              {{ bulkWithdrawing ? 'Withdrawing…' : `Withdraw selected (${selectedUserIds.size})` }}
+            </Button>
+          </div>
+
+          <div
+            v-if="enrolments.length > 0"
+            class="grid grid-cols-[28px_2fr_2fr_1.5fr_110px_110px_100px] items-center border-b border-(--line-1) py-3 px-6 text-xs text-(--fg-3) max-md:hidden"
+          >
+            <input
+              type="checkbox"
+              class="size-4 accent-(--brand-blue)"
+              aria-label="Select all active enrolments"
+              :checked="allActiveSelected"
+              :disabled="activeEnrolments.length === 0"
+              @change="toggleAll"
+            >
+            <span>Name</span>
+            <span>Email</span>
+            <span>Source</span>
+            <span>Status</span>
+            <span>Due</span>
+            <span />
           </div>
 
           <p v-if="enrolmentsLoading" class="p-6 text-center text-[13px] text-(--fg-3)">Loading enrolments…</p>
@@ -252,14 +333,25 @@ function statusTone(status: string): 'student' | 'info' | 'neutral' {
           <div
             v-for="(e, i) in enrolments" :key="e.enrolmentId"
             :class="[
-              'grid grid-cols-[2fr_2fr_120px_140px_100px] items-center py-3.5 px-6 max-md:flex max-md:flex-wrap max-md:gap-x-4 max-md:gap-y-2 max-md:p-4',
+              'grid grid-cols-[28px_2fr_2fr_1.5fr_110px_110px_100px] items-center py-3.5 px-6 max-md:flex max-md:flex-wrap max-md:gap-x-4 max-md:gap-y-2 max-md:p-4',
               i < enrolments.length - 1 && 'border-b border-(--line-1)',
             ]"
           >
+            <input
+              type="checkbox"
+              class="size-4 accent-(--brand-blue)"
+              :aria-label="`Select ${e.fullName}`"
+              :checked="selectedUserIds.has(e.userId)"
+              :disabled="e.status !== 'Active'"
+              @change="toggleSelected(e.userId)"
+            >
             <div class="text-sm font-semibold text-(--fg-1)">{{ e.fullName }}</div>
             <div class="text-sm text-(--fg-3)">{{ e.email }}</div>
+            <div class="flex flex-wrap gap-1">
+              <RaChip v-for="source in e.sources" :key="source" tone="neutral">{{ SOURCE_LABELS[source] ?? source }}</RaChip>
+            </div>
             <RaChip :tone="statusTone(e.status)">{{ e.status }}</RaChip>
-            <div class="text-xs text-(--fg-4)">{{ new Date(e.enrolledAt).toLocaleDateString() }}</div>
+            <div class="text-xs text-(--fg-4)">{{ e.dueAt ? new Date(e.dueAt).toLocaleDateString() : '—' }}</div>
             <div class="flex justify-end max-md:w-full max-md:justify-start">
               <Button v-if="e.status === 'Active'" variant="ghost" size="sm" @click="withdraw(e)">Withdraw</Button>
             </div>
@@ -267,29 +359,33 @@ function statusTone(status: string): 'student' | 'info' | 'neutral' {
         </RaCard>
 
         <RaCard :padding="24">
-          <h4 class="m-0 mb-3 text-sm font-bold text-(--fg-1)">Enrol a user</h4>
-          <div class="relative flex items-center gap-2 max-w-md">
-            <div class="relative flex-1">
-              <Input v-model="userQuery" placeholder="Search by name or email…" class="h-9" />
-              <div
-                v-if="userResults.length > 0"
-                class="absolute top-full left-0 right-0 z-10 mt-1 max-h-40 overflow-y-auto rounded-(--ra-md) border border-(--line-2) bg-(--bg-2) shadow-md"
-              >
-                <button
-                  v-for="u in userResults" :key="u.userId"
-                  type="button"
-                  class="block w-full px-2.5 py-1.5 text-left text-[13px] text-(--fg-2) hover:bg-(--bg-3)"
-                  @click="pickUser(u)"
-                >
-                  {{ u.fullName }} <span class="text-(--fg-4)">{{ u.email }}</span>
-                </button>
-              </div>
+          <h4 class="m-0 text-sm font-bold text-(--fg-1)">Enrol students</h4>
+          <p class="m-0 mt-1 mb-4 text-xs text-(--fg-3)">
+            Works for any visibility, including hidden courses. Students can't drop courses you enrol them in.
+            Picking a class enrols its current students once. To also enrol students who join the class later,
+            assign the course to the class from the Classes page.
+          </p>
+          <form class="flex max-w-xl flex-col gap-4" @submit.prevent="submitEnrol">
+            <div class="flex flex-col gap-1.5">
+              <label class="text-xs text-(--fg-3)">Students</label>
+              <SearchMultiSelect v-model="enrolUsers" :search="searchUsers" placeholder="Search by name or email…" />
             </div>
-            <Button size="sm" :disabled="!selectedUser || enrolling" @click="submitEnrol">
-              {{ enrolling ? 'Enrolling…' : 'Enrol' }}
-            </Button>
-          </div>
+            <div class="flex flex-col gap-1.5">
+              <label class="text-xs text-(--fg-3)">Whole classes (optional)</label>
+              <SearchMultiSelect v-model="enrolClasses" :search="searchClasses" placeholder="Search classes…" />
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <label for="enrol-due" class="text-xs text-(--fg-3)">Due date (optional)</label>
+              <Input id="enrol-due" v-model="enrolDueDate" type="date" class="h-9 w-48" />
+            </div>
+            <div>
+              <Button type="submit" :disabled="enrolling || (enrolUsers.length === 0 && enrolClasses.length === 0)">
+                {{ enrolling ? 'Enrolling…' : 'Enrol' }}
+              </Button>
+            </div>
+          </form>
         </RaCard>
+
       </template>
     </template>
 

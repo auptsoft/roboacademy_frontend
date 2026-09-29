@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { Cpu } from 'lucide-vue-next'
 
 export type CourseTileStatus = 'Completed' | 'In Progress' | 'New'
@@ -13,9 +14,21 @@ const props = defineProps<{
   metaRight?: string | null
   tag?: string | null
   status?: CourseTileStatus
+  // School-assigned enrolment, optionally with a deadline (omit dueAt once completed).
+  assigned?: boolean
+  dueAt?: string | null
 }>()
 
 const emit = defineEmits<{ open: [] }>()
+
+const dueLabel = computed(() => {
+  if (!props.dueAt) return null
+  const due = new Date(props.dueAt)
+  return {
+    text: `Due ${due.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`,
+    overdue: due.getTime() < Date.now(),
+  }
+})
 
 const statusTone: Record<CourseTileStatus, string> = {
   'Completed':   'bg-(--success-soft) text-(--success)',
@@ -51,9 +64,15 @@ const statusTone: Record<CourseTileStatus, string> = {
       <span class="shrink-0">{{ props.metaRight }}</span>
     </div>
 
-    <div v-if="props.tag || props.status" class="flex flex-wrap gap-2 mt-3">
+    <div v-if="props.tag || props.status || props.assigned || dueLabel" class="flex flex-wrap gap-2 mt-3">
       <span v-if="props.tag" class="inline-flex items-center px-6 py-2 rounded-(--ra-md) bg-(--bg-4) text-(--heading) text-[13px] font-medium uppercase">{{ props.tag }}</span>
       <span v-if="props.status" class="inline-flex items-center px-6 py-2 rounded-(--ra-md) text-[13px] font-medium" :class="statusTone[props.status]">{{ props.status }}</span>
+      <span v-if="props.assigned && !dueLabel" class="inline-flex items-center px-4 py-2 rounded-(--ra-md) bg-(--bg-4) text-(--fg-2) text-[13px] font-medium">Assigned</span>
+      <span
+        v-if="dueLabel"
+        class="inline-flex items-center px-4 py-2 rounded-(--ra-md) text-[13px] font-medium"
+        :class="dueLabel.overdue ? 'bg-(--danger-soft) text-(--danger)' : 'bg-(--bg-4) text-(--fg-2)'"
+      >{{ dueLabel.overdue ? `Overdue · ${dueLabel.text}` : dueLabel.text }}</span>
     </div>
   </article>
 </template>

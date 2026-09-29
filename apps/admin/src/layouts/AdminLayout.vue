@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import AdminSidebar from './AdminSidebar.vue'
 import AdminNavList from './AdminNavList.vue'
 import BrandMark from '@/components/BrandMark.vue'
+import NotificationBell from '@/components/NotificationBell.vue'
 import { exitTenant, getCurrentUser, getImpersonationTarget } from '@/store/auth'
 
 const router = useRouter()
@@ -47,6 +48,7 @@ async function exitImpersonation() {
           <span class="text-base font-bold tracking-[-0.01em] text-(--brand-blue)">RoboAcademy Admin</span>
         </div>
         <div class="flex-1" />
+        <NotificationBell />
         <RaThemeToggle />
         <DropdownMenu>
           <DropdownMenuTrigger class="hidden rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring/30 md:inline-flex" aria-label="Account menu">

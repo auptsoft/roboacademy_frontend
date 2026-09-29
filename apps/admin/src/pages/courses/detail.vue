@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { RaCard, RaChip } from '@roboacademy/ui'
-import { Plus, ChevronDown, Copy } from 'lucide-vue-next'
+import { Plus, ChevronDown, Copy, UserCheck } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import CopyToTenantsDialog from '@/components/CopyToTenantsDialog.vue'
 import { useCanCopyCrossTenant } from '@/composables/useCanCopyCrossTenant'
@@ -12,6 +12,8 @@ import { Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogD
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
 import CourseGeneralCard, { type CourseGeneralFormState } from '@/components/CourseGeneralCard.vue'
 import CoursePublishCard from '@/components/CoursePublishCard.vue'
+import CourseVisibilityCard from '@/components/CourseVisibilityCard.vue'
+import { hasPermission } from '@/store/auth'
 import CourseModuleHeader, { type CourseModuleEditForm } from '@/components/CourseModuleHeader.vue'
 import CourseItemRow from '@/components/CourseItemRow.vue'
 import LessonFormFields, { type LessonFormState } from '@/components/LessonFormFields.vue'
@@ -37,7 +39,10 @@ import {
   setCourseIntroVideo,
   getCourseIntroVideoUrl,
   copyCourseToTenants,
+  setCourseVisibility,
+  visibilityLabel,
   type CourseDetail,
+  type CourseVisibility,
   type CourseModuleItem,
   type LessonItem,
 } from '@/api/learning'
@@ -56,10 +61,15 @@ const route = useRoute()
 const router = useRouter()
 const courseId = computed(() => String(route.params.courseId))
 
+// School admins open this page for visibility/enrollment only; authoring stays with authors.
+const canAuthor = hasPermission('learning:courses:author')
+const canManageVisibility = hasPermission('learning:courses:manage-visibility')
+const canManageEnrolments = hasPermission('learning:enrolments:manage')
+
 const sections = [
-  { id: 'general', label: 'General' },
-  { id: 'modules', label: 'Modules, Lessons & Assessments' },
-  { id: 'publish', label: 'Publish' },
+  ...(canAuthor ? [{ id: 'general', label: 'General' }, { id: 'modules', label: 'Modules, Lessons & Assessments' }] : []),
+  ...(canManageVisibility ? [{ id: 'visibility', label: 'Visibility' }] : []),
+  ...(canAuthor ? [{ id: 'publish', label: 'Publish' }] : []),
 ]
 
 // Collapsed by default - CourseGeneralCard/CoursePublishCard own their own collapse state
@@ -283,7 +293,7 @@ async function loadCourse() {
         Object.entries(course.value.extraProperties).map(([key, value]) => [key, String(value)]),
       ),
     }
-    await loadAssessments()
+    if (canAuthor) await loadAssessments()
   } catch (error) {
     if (!(error instanceof ApiError && error.status === 404)) {
       toast.error(error instanceof ApiError ? error.message : 'Failed to load course.')
@@ -296,8 +306,27 @@ async function loadCourse() {
 
 onMounted(() => {
   loadCourse()
-  loadQuestionBank()
+  if (canAuthor) loadQuestionBank()
 })
+
+// --- Visibility ---
+const savingVisibility = ref(false)
+
+async function saveVisibility(visibility: CourseVisibility) {
+  if (!course.value) return
+  savingVisibility.value = true
+  try {
+    const result = await setCourseVisibility(courseId.value, visibility)
+    course.value.visibility = result.visibility
+    toast.success(`Visibility set to ${visibilityLabel(result.visibility)}.`)
+  } catch (error) {
+    toast.error(error instanceof ApiError ? error.message : 'Failed to update visibility.')
+  } finally {
+    savingVisibility.value = false
+  }
+}
+
+const lessonCount = computed(() => course.value?.modules.reduce((sum, m) => sum + m.lessons.length, 0) ?? 0)
 watch(courseId, loadCourse)
 
 // --- General (title / description) ---
@@ -850,12 +879,22 @@ async function copyToTenants(targetTenantIds: string[]) {
           <div class="flex items-center gap-3">
             <h1 class="m-0 text-[32px] font-bold tracking-[-0.01em] text-(--fg-1)">{{ course.title }}</h1>
             <RaChip :tone="course.state === 'Published' ? 'info' : 'neutral'">{{ course.state }}</RaChip>
+            <RaChip tone="neutral">{{ visibilityLabel(course.visibility) }}</RaChip>
           </div>
           <p v-if="course.description" class="mt-1.5 text-sm text-(--fg-3)">{{ course.description }}</p>
         </div>
-        <Button v-if="canCopyCrossTenant" variant="outline" @click="copyDialogOpen = true">
-          <Copy :size="14" /> Copy to tenants…
-        </Button>
+        <div class="flex gap-2">
+          <Button
+            v-if="canManageEnrolments"
+            variant="outline"
+            @click="router.push({ path: '/enrollments', query: { courseId: course.id } })"
+          >
+            <UserCheck :size="14" /> Enrollments
+          </Button>
+          <Button v-if="canCopyCrossTenant" variant="outline" @click="copyDialogOpen = true">
+            <Copy :size="14" /> Copy to tenants…
+          </Button>
+        </div>
       </div>
 
       <CopyToTenantsDialog
@@ -878,7 +917,19 @@ async function copyToTenants(targetTenantIds: string[]) {
         </nav>
 
         <div class="flex flex-col gap-6">
+          <RaCard v-if="!canAuthor" class="p-6">
+            <p class="m-0 text-sm text-(--fg-2)">
+              {{ course.modules.length }} modules · {{ lessonCount }} lessons
+            </p>
+            <ul class="m-0 mt-3 flex list-none flex-col gap-1 p-0">
+              <li v-for="mod in course.modules" :key="mod.id" class="text-[13px] text-(--fg-3)">
+                <span class="font-semibold text-(--fg-2)">{{ mod.title }}</span> — {{ mod.lessons.length }} lessons
+              </li>
+            </ul>
+          </RaCard>
+
           <CourseGeneralCard
+            v-if="canAuthor"
             v-model="generalForm"
             :course-id="course.id"
             :submitting="generalSubmitting"
@@ -894,7 +945,7 @@ async function copyToTenants(targetTenantIds: string[]) {
           />
 
           <!-- Modules, Lessons & Assessments -->
-          <RaCard id="modules" :padding="0" class="scroll-mt-6 overflow-hidden">
+          <RaCard v-if="canAuthor" id="modules" :padding="0" class="scroll-mt-6 overflow-hidden">
             <Collapsible v-model:open="modulesOpen">
               <CollapsibleTrigger class="flex w-full items-center justify-between gap-3 border-b border-(--line-1) py-5 px-6 text-left">
                 <div>
@@ -1024,7 +1075,16 @@ async function copyToTenants(targetTenantIds: string[]) {
             </Collapsible>
           </RaCard>
 
+          <CourseVisibilityCard
+            v-if="canManageVisibility"
+            :visibility="course.visibility"
+            :state="course.state"
+            :saving="savingVisibility"
+            @save="saveVisibility"
+          />
+
           <CoursePublishCard
+            v-if="canAuthor"
             :state="course.state"
             :is-draft="isDraft"
             :can-publish="canPublish"

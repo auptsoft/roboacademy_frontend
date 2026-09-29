@@ -75,6 +75,26 @@ const router = createRouter({
                 },
 
                 {
+                    path: 'events',
+                    component: () => import("@/pages/app/events.vue")
+                },
+
+                {
+                    path: 'events/:id',
+                    component: () => import("@/pages/app/event-detail.vue")
+                },
+
+                {
+                    path: 'calendar',
+                    component: () => import("@/pages/app/calendar.vue")
+                },
+
+                {
+                    path: 'notifications',
+                    component: () => import("@/pages/app/notifications.vue")
+                },
+
+                {
                     path: 'settings',
                     component: () => import("@/pages/app/settings.vue")
                 }

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
-import { RaCard, RaChip } from '@roboacademy/ui'
-import { FolderCog, MoreVertical, Plus, Users as UsersIcon, X } from 'lucide-vue-next'
+import { RaCard } from '@roboacademy/ui'
+import { FolderCog, MoreVertical, Plus, X } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import Input from '@/components/ui/input.vue'
 import Label from '@/components/ui/label.vue'
@@ -29,21 +30,19 @@ import {
   createClass,
   updateClass,
   deleteClass,
-  getClass,
-  addClassStaff,
-  removeClassStaff,
-  addClassStudent,
-  removeClassStudent,
   listDepartments,
   createDepartment,
   updateDepartment,
   deleteDepartment,
-  listUsers,
   type AdminClass,
   type AdminDepartment,
-  type ClassDetail,
-  type AdminUser,
 } from '@/api/identity'
+
+const router = useRouter()
+
+function openClass(cls: AdminClass, tab?: string) {
+  router.push({ path: `/classes/${cls.classId}`, query: tab ? { tab } : {} })
+}
 
 const {
   items: classes,
@@ -228,151 +227,6 @@ async function removeDepartment(department: AdminDepartment) {
   }
 }
 
-// --- Manage roster dialog ---
-const rosterClass = ref<AdminClass | null>(null)
-const rosterDetail = ref<ClassDetail | null>(null)
-const rosterLoading = ref(false)
-
-async function refreshRoster() {
-  if (!rosterClass.value) return
-  rosterDetail.value = await getClass(rosterClass.value.classId)
-}
-
-async function openRoster(cls: AdminClass) {
-  rosterClass.value = cls
-  rosterDetail.value = null
-  rosterLoading.value = true
-  try {
-    await refreshRoster()
-  } catch (error) {
-    toast.error(error instanceof ApiError ? error.message : 'Failed to load class roster.')
-  } finally {
-    rosterLoading.value = false
-  }
-}
-
-function closeRoster() {
-  rosterClass.value = null
-  rosterDetail.value = null
-  studentQuery.value = ''
-  studentResults.value = []
-  selectedStudent.value = null
-  staffQuery.value = ''
-  staffResults.value = []
-  selectedStaff.value = null
-  staffRole.value = 'Teacher'
-}
-
-// Student picker
-const studentQuery = ref('')
-const studentResults = ref<AdminUser[]>([])
-const selectedStudent = ref<AdminUser | null>(null)
-const addingStudent = ref(false)
-let studentSearchDebounce: ReturnType<typeof setTimeout> | undefined
-
-watch(studentQuery, (value) => {
-  // Picking a result sets studentQuery to the picked user's name — skip re-searching that.
-  if (selectedStudent.value && value === selectedStudent.value.fullName) return
-  clearTimeout(studentSearchDebounce)
-  selectedStudent.value = null
-  if (value.trim().length < 2) {
-    studentResults.value = []
-    return
-  }
-  studentSearchDebounce = setTimeout(async () => {
-    const result = await listUsers(1, 8, value)
-    studentResults.value = result.items
-  }, 300)
-})
-
-function pickStudent(user: AdminUser) {
-  selectedStudent.value = user
-  studentQuery.value = user.fullName
-  studentResults.value = []
-}
-
-async function submitAddStudent() {
-  if (!rosterClass.value || !selectedStudent.value) return
-  addingStudent.value = true
-  try {
-    await addClassStudent(rosterClass.value.classId, selectedStudent.value.userId)
-    studentQuery.value = ''
-    selectedStudent.value = null
-    await refreshRoster()
-    await load()
-  } catch (error) {
-    toast.error(error instanceof ApiError ? error.message : 'Failed to add student.')
-  } finally {
-    addingStudent.value = false
-  }
-}
-
-async function removeStudent(userId: string) {
-  if (!rosterClass.value) return
-  try {
-    await removeClassStudent(rosterClass.value.classId, userId)
-    await refreshRoster()
-    await load()
-  } catch (error) {
-    toast.error(error instanceof ApiError ? error.message : 'Failed to remove student.')
-  }
-}
-
-// Staff picker
-const staffQuery = ref('')
-const staffResults = ref<AdminUser[]>([])
-const selectedStaff = ref<AdminUser | null>(null)
-const staffRole = ref<'Teacher' | 'TeachingAssistant'>('Teacher')
-const addingStaff = ref(false)
-let staffSearchDebounce: ReturnType<typeof setTimeout> | undefined
-
-watch(staffQuery, (value) => {
-  // Picking a result sets staffQuery to the picked user's name — skip re-searching that.
-  if (selectedStaff.value && value === selectedStaff.value.fullName) return
-  clearTimeout(staffSearchDebounce)
-  selectedStaff.value = null
-  if (value.trim().length < 2) {
-    staffResults.value = []
-    return
-  }
-  staffSearchDebounce = setTimeout(async () => {
-    const result = await listUsers(1, 8, value)
-    staffResults.value = result.items
-  }, 300)
-})
-
-function pickStaff(user: AdminUser) {
-  selectedStaff.value = user
-  staffQuery.value = user.fullName
-  staffResults.value = []
-}
-
-async function submitAddStaff() {
-  if (!rosterClass.value || !selectedStaff.value) return
-  addingStaff.value = true
-  try {
-    await addClassStaff(rosterClass.value.classId, selectedStaff.value.userId, staffRole.value)
-    staffQuery.value = ''
-    selectedStaff.value = null
-    await refreshRoster()
-    await load()
-  } catch (error) {
-    toast.error(error instanceof ApiError ? error.message : 'Failed to add staff member.')
-  } finally {
-    addingStaff.value = false
-  }
-}
-
-async function removeStaffMember(userId: string) {
-  if (!rosterClass.value) return
-  try {
-    await removeClassStaff(rosterClass.value.classId, userId)
-    await refreshRoster()
-    await load()
-  } catch (error) {
-    toast.error(error instanceof ApiError ? error.message : 'Failed to remove staff member.')
-  }
-}
 </script>
 
 <template>
@@ -380,7 +234,9 @@ async function removeStaffMember(userId: string) {
     <div class="flex items-start justify-between max-sm:flex-col max-sm:items-stretch max-sm:gap-3">
       <div>
         <h1 class="m-0 text-[32px] font-bold tracking-[-0.01em] text-(--fg-1)">Classes</h1>
-        <p class="mt-1.5 text-sm text-(--fg-3)">Organize students and staff into classes and departments.</p>
+        <p class="mt-1.5 text-sm text-(--fg-3)">
+          Organize students and staff into classes, then assign courses and learning paths to a whole class.
+        </p>
       </div>
       <div class="flex gap-2.5 max-sm:flex-col">
         <Button variant="outline" @click="openDepartmentsDialog">
@@ -415,7 +271,13 @@ async function removeStaffMember(userId: string) {
         :key="cls.classId"
         :class="[rowClass, i < classes.length - 1 && 'border-b border-(--line-1)']"
       >
-        <div class="text-sm font-semibold text-(--fg-1)">{{ cls.name }}</div>
+        <button
+          type="button"
+          class="cursor-pointer bg-transparent p-0 text-left text-sm font-semibold text-(--fg-1) underline-offset-2 hover:underline"
+          @click="openClass(cls)"
+        >
+          {{ cls.name }}
+        </button>
         <div class="text-sm text-(--fg-3)">{{ departmentName(cls.departmentId) }}</div>
         <div class="text-sm text-(--fg-2)">{{ cls.studentCount }}</div>
         <div class="text-sm text-(--fg-2)">{{ cls.staffCount }}</div>
@@ -429,7 +291,9 @@ async function removeStaffMember(userId: string) {
             </DropdownMenuTrigger>
             <DropdownMenuContent>
               <DropdownMenuItem @select="openEdit(cls)">Edit</DropdownMenuItem>
-              <DropdownMenuItem @select="openRoster(cls)">Manage Roster</DropdownMenuItem>
+              <DropdownMenuItem @select="openClass(cls)">Roster</DropdownMenuItem>
+              <DropdownMenuItem @select="openClass(cls, 'courses')">Courses & Paths</DropdownMenuItem>
+              <DropdownMenuItem @select="openClass(cls, 'progress')">Progress</DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem variant="destructive" :disabled="deletingClassId === cls.classId" @select="removeClass(cls)">
                 Delete
@@ -562,91 +426,5 @@ async function removeStaffMember(userId: string) {
       </DialogContent>
     </Dialog>
 
-    <!-- Manage roster dialog -->
-    <Dialog :open="rosterClass !== null" @update:open="(open) => { if (!open) closeRoster() }">
-      <DialogContent v-if="rosterClass" class="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Manage Roster — {{ rosterClass.name }}</DialogTitle>
-          <DialogDescription>Add or remove staff and students for this class.</DialogDescription>
-        </DialogHeader>
-
-        <p v-if="rosterLoading" class="m-0 text-[13px] text-(--fg-3)">Loading roster…</p>
-        <div v-else-if="rosterDetail" class="flex flex-col gap-6">
-          <div class="flex flex-col gap-2">
-            <h4 class="m-0 flex items-center gap-1.5 text-sm font-bold text-(--fg-1)">
-              <UsersIcon :size="14" /> Staff
-            </h4>
-            <p v-if="rosterDetail.staff.length === 0" class="m-0 text-xs text-(--fg-3)">No staff assigned.</p>
-            <div v-for="s in rosterDetail.staff" :key="s.userId" class="flex items-center justify-between gap-2">
-              <div class="flex items-center gap-2">
-                <span class="text-sm text-(--fg-1)">{{ s.fullName }}</span>
-                <RaChip tone="instructor">{{ s.role }}</RaChip>
-              </div>
-              <Button variant="ghost" size="sm" @click="removeStaffMember(s.userId)">Remove</Button>
-            </div>
-            <div class="relative mt-1.5 flex items-center gap-2">
-              <div class="relative flex-1">
-                <Input v-model="staffQuery" placeholder="Search by name or email…" class="h-9" />
-                <div
-                  v-if="staffResults.length > 0"
-                  class="absolute top-full right-0 left-0 z-10 mt-1 max-h-40 overflow-y-auto rounded-(--ra-md) border border-(--line-2) bg-(--bg-2) shadow-md"
-                >
-                  <button
-                    v-for="u in staffResults"
-                    :key="u.userId"
-                    type="button"
-                    class="block w-full px-2.5 py-1.5 text-left text-[13px] text-(--fg-2) hover:bg-(--bg-3)"
-                    @click="pickStaff(u)"
-                  >
-                    {{ u.fullName }} <span class="text-(--fg-4)">{{ u.email }}</span>
-                  </button>
-                </div>
-              </div>
-              <select
-                v-model="staffRole"
-                class="h-9 rounded-(--ra-md) border border-(--line-2) bg-(--bg-3) px-2 text-xs text-(--fg-2) outline-none"
-              >
-                <option value="Teacher">Teacher</option>
-                <option value="TeachingAssistant">Teaching Assistant</option>
-              </select>
-              <Button size="sm" :disabled="!selectedStaff || addingStaff" @click="submitAddStaff">Add</Button>
-            </div>
-          </div>
-
-          <div class="flex flex-col gap-2">
-            <h4 class="m-0 text-sm font-bold text-(--fg-1)">Students</h4>
-            <p v-if="rosterDetail.students.length === 0" class="m-0 text-xs text-(--fg-3)">No students enrolled.</p>
-            <div v-for="s in rosterDetail.students" :key="s.userId" class="flex items-center justify-between gap-2">
-              <span class="text-sm text-(--fg-1)">{{ s.fullName }}</span>
-              <Button variant="ghost" size="sm" @click="removeStudent(s.userId)">Remove</Button>
-            </div>
-            <div class="relative mt-1.5 flex items-center gap-2">
-              <div class="relative flex-1">
-                <Input v-model="studentQuery" placeholder="Search by name or email…" class="h-9" />
-                <div
-                  v-if="studentResults.length > 0"
-                  class="absolute top-full right-0 left-0 z-10 mt-1 max-h-40 overflow-y-auto rounded-(--ra-md) border border-(--line-2) bg-(--bg-2) shadow-md"
-                >
-                  <button
-                    v-for="u in studentResults"
-                    :key="u.userId"
-                    type="button"
-                    class="block w-full px-2.5 py-1.5 text-left text-[13px] text-(--fg-2) hover:bg-(--bg-3)"
-                    @click="pickStudent(u)"
-                  >
-                    {{ u.fullName }} <span class="text-(--fg-4)">{{ u.email }}</span>
-                  </button>
-                </div>
-              </div>
-              <Button size="sm" :disabled="!selectedStudent || addingStudent" @click="submitAddStudent">Add</Button>
-            </div>
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" type="button" @click="closeRoster">Close</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   </div>
 </template>

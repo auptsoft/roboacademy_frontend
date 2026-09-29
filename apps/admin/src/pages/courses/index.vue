@@ -27,12 +27,20 @@ import ImportCourseFromTenantDialog from '@/components/ImportCourseFromTenantDia
 import { ApiError } from '@/api/client'
 import { usePagedList } from '@/composables/usePagedList'
 import { useCanCopyCrossTenant } from '@/composables/useCanCopyCrossTenant'
-import { listCourseCatalog, createCourse, copyCourseToTenants, type CourseCatalogItem, type CourseState } from '@/api/learning'
+import { hasPermission } from '@/store/auth'
+import {
+  listCourseCatalog, createCourse, copyCourseToTenants, visibilityLabel, COURSE_VISIBILITIES,
+  type CourseCatalogItem, type CourseState, type CourseVisibility,
+} from '@/api/learning'
 
 const router = useRouter()
 const canCopyCrossTenant = useCanCopyCrossTenant()
+// School admins reach this page to manage visibility only - authoring stays with authors.
+const canAuthor = hasPermission('learning:courses:author')
 
-const filters = reactive<{ state: CourseState | ''; search: string }>({ state: '', search: '' })
+const filters = reactive<{ state: CourseState | ''; visibility: CourseVisibility | ''; search: string }>({
+  state: '', visibility: '', search: '',
+})
 
 const {
   items: courses,
@@ -46,7 +54,7 @@ const {
   setPageSize,
 } = usePagedList(
   (page, pageSize) => listCourseCatalog(
-    { state: filters.state || undefined, search: filters.search || undefined },
+    { state: filters.state || undefined, visibility: filters.visibility || undefined, search: filters.search || undefined },
     page,
     pageSize,
   ),
@@ -54,7 +62,7 @@ const {
 )
 
 const rowClass =
-  'grid grid-cols-[2fr_2fr_100px_100px_60px] items-center py-3.5 px-6 transition-colors hover:bg-(--bg-3) max-md:flex max-md:flex-wrap max-md:gap-x-4 max-md:gap-y-2 max-md:p-4'
+  'grid grid-cols-[2fr_2fr_100px_120px_80px_60px] items-center py-3.5 px-6 transition-colors hover:bg-(--bg-3) max-md:flex max-md:flex-wrap max-md:gap-x-4 max-md:gap-y-2 max-md:p-4'
 
 onMounted(() => {
   load()
@@ -65,7 +73,11 @@ watch(() => filters.search, () => {
   clearTimeout(searchDebounce)
   searchDebounce = setTimeout(() => { page.value = 1; load() }, 300)
 })
-watch(() => filters.state, () => { page.value = 1; load() })
+watch(() => [filters.state, filters.visibility], () => { page.value = 1; load() })
+
+function visibilityTone(visibility: CourseVisibility) {
+  return visibility === 'Public' ? 'student' : visibility === 'Hidden' ? 'neutral' : 'info'
+}
 
 // --- Create course ---
 const createOpen = ref(false)
@@ -133,13 +145,15 @@ function onImported(courseId: string) {
     <div class="flex items-start justify-between max-sm:flex-col max-sm:items-stretch max-sm:gap-3">
       <div>
         <h1 class="m-0 text-[32px] font-bold tracking-[-0.01em] text-(--fg-1)">Courses</h1>
-        <p class="mt-1.5 text-sm text-(--fg-3)">Author courses, modules, and lessons.</p>
+        <p class="mt-1.5 text-sm text-(--fg-3)">
+          {{ canAuthor ? 'Author courses, modules, and lessons.' : 'Choose which courses students can see in the catalog.' }}
+        </p>
       </div>
       <div class="flex gap-2">
         <Button v-if="canCopyCrossTenant" variant="outline" @click="importDialogOpen = true">
           <Upload :size="14" /> Import from tenant…
         </Button>
-        <Button @click="openCreate">
+        <Button v-if="canAuthor" @click="openCreate">
           <Plus :size="14" /> Add Course
         </Button>
       </div>
@@ -155,13 +169,22 @@ function onImported(courseId: string) {
           <option value="Draft">Draft</option>
           <option value="Published">Published</option>
         </select>
+        <select
+          v-model="filters.visibility"
+          aria-label="Filter by visibility"
+          class="h-9 rounded-(--ra-md) border border-(--line-2) bg-(--bg-3) px-2.5 text-sm text-(--fg-2) outline-none"
+        >
+          <option value="">All visibility</option>
+          <option v-for="option in COURSE_VISIBILITIES" :key="option.value" :value="option.value">{{ option.label }}</option>
+        </select>
         <Input v-model="filters.search" placeholder="Search by title or description…" class="h-9 flex-1 min-w-48" />
       </div>
 
-      <div class="grid grid-cols-[2fr_2fr_100px_100px_60px] border-b border-(--line-1) py-3.5 px-6 text-xs text-(--fg-3) max-md:hidden">
+      <div class="grid grid-cols-[2fr_2fr_100px_120px_80px_60px] border-b border-(--line-1) py-3.5 px-6 text-xs text-(--fg-3) max-md:hidden">
         <span>Title</span>
         <span>Description</span>
         <span>State</span>
+        <span>Visibility</span>
         <span>Lessons</span>
         <span class="text-right">Actions</span>
       </div>
@@ -185,6 +208,7 @@ function onImported(courseId: string) {
         </button>
         <div class="text-sm text-(--fg-3)">{{ course.description || '—' }}</div>
         <div><RaChip :tone="course.state === 'Published' ? 'info' : 'neutral'">{{ course.state }}</RaChip></div>
+        <div><RaChip :tone="visibilityTone(course.visibility)">{{ visibilityLabel(course.visibility) }}</RaChip></div>
         <div class="text-sm text-(--fg-2)">{{ course.lessonCount }}</div>
         <div class="flex justify-end max-md:w-full max-md:justify-start">
           <DropdownMenu v-if="canCopyCrossTenant">

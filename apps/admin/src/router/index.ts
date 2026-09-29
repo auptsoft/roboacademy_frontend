@@ -38,6 +38,10 @@ const router = createRouter({
           component: () => import('@/pages/classes.vue'),
         },
         {
+          path: 'classes/:classId',
+          component: () => import('@/pages/classes/detail.vue'),
+        },
+        {
           path: 'courses',
           component: () => import('@/pages/courses/index.vue'),
         },
@@ -60,6 +64,22 @@ const router = createRouter({
         {
           path: 'live-classes',
           component: () => import('@/pages/live-classes/index.vue'),
+        },
+        {
+          path: 'events',
+          component: () => import('@/pages/events/index.vue'),
+        },
+        {
+          path: 'calendar',
+          component: () => import('@/pages/calendar.vue'),
+        },
+        {
+          path: 'announcements',
+          component: () => import('@/pages/announcements/index.vue'),
+        },
+        {
+          path: 'events/:eventId',
+          component: () => import('@/pages/events/detail.vue'),
         },
         {
           path: 'assessment/question-bank',

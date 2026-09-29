@@ -11,7 +11,7 @@ import {
 } from '@/api/learning'
 import PathCatalogCard from '@/components/explore/PathCatalogCard.vue'
 import { getMyCertificates, type CertificateItem } from '@/api/certification'
-import { getMyLabSessions, type LabSessionSummary } from '@/api/robotics-lab'
+import { getMyCalendar, type CalendarItem } from '@/api/scheduling'
 import CourseCatalogCard from '@/components/explore/CourseCatalogCard.vue'
 import { getCurrentUser } from '@/store/auth'
 import { brandingKey } from '@/branding'
@@ -234,20 +234,23 @@ const activityLoading = computed(() =>
   activityStatus.value === 'loading' || enrolledStatus.value === 'loading' || certificatesStatus.value === 'loading',
 )
 
-// Upcoming this week — merged from booked live classes and robotics-lab sessions.
+// Upcoming this week — the unified calendar (booked live classes, lab sessions, events).
+// Booked live classes are still loaded on their own for the hero carousel's "next live" slide.
 const upcomingLiveClasses = ref<LiveClassSummary[]>([])
-const labSessions = ref<LabSessionSummary[]>([])
+const calendarItems = ref<CalendarItem[]>([])
 const upcomingStatus = ref<'loading' | 'idle' | 'error'>('loading')
 
 async function loadUpcoming() {
   upcomingStatus.value = 'loading'
+  const now = new Date()
+  const weekAhead = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
   try {
-    const [liveClasses, sessions] = await Promise.all([
+    const [liveClasses, calendar] = await Promise.all([
       getMyLiveClasses(),
-      getMyLabSessions(),
+      getMyCalendar(now, weekAhead),
     ])
     upcomingLiveClasses.value = liveClasses.data
-    labSessions.value = sessions.data
+    calendarItems.value = calendar
     upcomingStatus.value = 'idle'
   } catch {
     upcomingStatus.value = 'error'
@@ -255,32 +258,13 @@ async function loadUpcoming() {
 }
 onMounted(loadUpcoming)
 
-interface UpcomingEntry { title: string; scheduledStart: string }
-
 const upcoming = computed(() => {
   const now = Date.now()
-  const weekAhead = now + 7 * 24 * 60 * 60 * 1000
-  const inWindow = (iso: string) => {
-    const t = Date.parse(iso)
-    return t >= now && t <= weekAhead
-  }
-
-  const entries: UpcomingEntry[] = [
-    ...upcomingLiveClasses.value
-      .filter(l => inWindow(l.scheduledStart))
-      .map((l): UpcomingEntry => ({ title: l.title, scheduledStart: l.scheduledStart })),
-    ...labSessions.value
-      .filter((s): s is LabSessionSummary & { scheduledStart: string } => !!s.scheduledStart && inWindow(s.scheduledStart))
-      .map((s): UpcomingEntry => ({
-        title: s.mode === 'Simulation' ? 'Simulation Lab' : 'Robotics Lab Session',
-        scheduledStart: s.scheduledStart,
-      })),
-  ]
-
-  return entries
-    .sort((a, b) => Date.parse(a.scheduledStart) - Date.parse(b.scheduledStart))
+  return calendarItems.value
+    // Events show up whether or not you've RSVPed; bookings only because you made them.
+    .filter(i => i.status !== 'Cancelled' && Date.parse(i.startsAt) >= now)
     .slice(0, 4)
-    .map(e => ({ title: e.title, ...formatCalendarParts(e.scheduledStart) }))
+    .map(i => ({ title: i.title, link: i.linkPath, ...formatCalendarParts(i.startsAt) }))
 })
 
 // Hero carousel — built from whatever real data is available; the tenant welcome slide is
@@ -443,20 +427,23 @@ const heroSlides = computed<HeroSlide[]>(() => {
     <!-- Upcoming + Suggested paths -->
     <div class="grid gap-6 grid-cols-[minmax(0,1fr)_minmax(0,2fr)] max-lg:grid-cols-1">
       <RaCard :padding="24" class="bg-(--surface)! border-0! rounded-(--ra-xl)! shadow-(--surface-shadow)">
-        <h2 class="m-0 mb-5 text-[22px] font-medium text-(--heading)">Upcoming This Week</h2>
+        <div class="flex justify-between items-baseline mb-5">
+          <h2 class="m-0 text-[22px] font-medium text-(--heading)">Upcoming This Week</h2>
+          <button class="text-[13px] font-medium text-(--link) bg-transparent border-0 p-0 cursor-pointer hover:underline" @click="router.push('/app/calendar')">Calendar</button>
+        </div>
         <div v-if="upcomingStatus === 'loading'" class="text-[13px] text-(--fg-3)">Loading…</div>
         <p v-else-if="!upcoming.length" class="m-0 text-[13px] text-(--fg-3)">Nothing scheduled this week.</p>
         <div v-else class="flex flex-col gap-4">
-          <div v-for="(item, i) in upcoming" :key="i" class="flex items-center gap-3">
+          <button v-for="(item, i) in upcoming" :key="i" class="flex items-center gap-3 w-full text-left bg-transparent border-0 p-0 cursor-pointer group" @click="router.push(item.link)">
             <div class="w-12 h-12 rounded-(--ra-md) bg-(--brand-navy) text-(--brand-navy-fg) flex flex-col items-center justify-center shrink-0">
               <span class="text-[9px] font-semibold uppercase tracking-widest text-(--brand-navy-muted)">{{ item.day }}</span>
               <span class="text-base font-bold leading-none mt-0.5">{{ item.date }}</span>
             </div>
             <div class="flex-1 min-w-0">
-              <div class="text-sm font-medium text-(--fg-1) leading-snug">{{ item.title }}</div>
+              <div class="text-sm font-medium text-(--fg-1) leading-snug group-hover:underline">{{ item.title }}</div>
               <div class="text-xs text-(--fg-3) mt-0.5">{{ item.time }}</div>
             </div>
-          </div>
+          </button>
         </div>
       </RaCard>
 

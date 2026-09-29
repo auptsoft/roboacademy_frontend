@@ -238,12 +238,23 @@ export function getLessonPlaybackUrl(courseId: string, moduleId: string, lessonI
   return apiFetch<VideoPlaybackUrl>(`/api/learning/courses/${courseId}/modules/${moduleId}/lessons/${lessonId}/playback-url`)
 }
 
+export type EnrolmentSource = 'Self' | 'Path' | 'Admin' | 'Class'
+
 export interface EnrolmentDto {
   id: string
   courseId: string
   userId: string
   status: string
   enrolledAt: string
+  // Why the enrolment exists. Admin/Class means the school assigned it.
+  sources: EnrolmentSource[]
+  // False for school-assigned courses: the API refuses a self-withdraw for those.
+  canWithdraw: boolean
+  dueAt: string | null
+}
+
+export function isSchoolAssigned(enrolment: Pick<EnrolmentDto, 'sources'>): boolean {
+  return enrolment.sources.some(s => s === 'Admin' || s === 'Class')
 }
 
 export function getMyEnrolments(params: { page?: number; pageSize?: number } = {}): Promise<{ data: EnrolmentDto[]; meta: PageMeta }> {
@@ -311,14 +322,21 @@ export interface EnrolledCourseSummary {
   nextLessonId: string | null
   nextLessonTitle: string | null
   nextModuleTitle: string | null
+  status: string
+  // Assigned by the school (admin or class) - can't be dropped by the student.
+  assigned: boolean
+  dueAt: string | null
 }
 
 // enrolments/me only returns courseId/status — join against getCourse + progress/me per
-// enrolment since there's no combined backend endpoint for this yet.
+// enrolment since there's no combined backend endpoint for this yet. A course that can no
+// longer be opened (e.g. unpublished since) is skipped rather than failing the whole list.
 export async function getMyEnrolledCourses(): Promise<EnrolledCourseSummary[]> {
-  const { data: enrolments } = await getMyEnrolments()
-  return Promise.all(
-    enrolments.map(async (enrolment) => {
+  const { data } = await getMyEnrolments()
+  // Withdrawn rows are history (and a re-enrolment creates a new row), so they'd duplicate.
+  const enrolments = data.filter(e => e.status !== 'Withdrawn')
+  const results = await Promise.allSettled(
+    enrolments.map(async (enrolment): Promise<EnrolledCourseSummary> => {
       const [course, resume] = await Promise.all([
         getCourse(enrolment.courseId),
         getCourseResumePoint(enrolment.courseId),
@@ -345,9 +363,13 @@ export async function getMyEnrolledCourses(): Promise<EnrolledCourseSummary[]> {
         nextLessonId: resume.nextLessonId,
         nextLessonTitle: nextLesson?.lesson.title ?? null,
         nextModuleTitle: nextLesson?.moduleTitle ?? null,
+        status: enrolment.status,
+        assigned: isSchoolAssigned(enrolment),
+        dueAt: enrolment.dueAt,
       }
     }),
   )
+  return results.flatMap(r => (r.status === 'fulfilled' ? [r.value] : []))
 }
 
 export interface ProgressEventItem {
@@ -372,6 +394,7 @@ export interface LiveClassSummary {
   courseId: string
   title: string
   scheduledStart: string
+  scheduledEnd: string
   status: LiveClassStatus
 }
 
@@ -386,6 +409,28 @@ export interface LiveClassDetail {
   bookedCount: number
   status: LiveClassStatus
   isCallerBooked: boolean
+  // Meeting details are revealed from here (15 min before start) - see isLiveClassJoinable.
+  joinOpensAt: string
+  hasMeetingDetails: boolean
+  isJoinable: boolean
+}
+
+// The class runs in an external tool (Zoom, Meet, ...) - these are opened outside the app.
+export interface LiveClassMeeting {
+  meetingUrl: string | null
+  meetingCode: string | null
+  meetingNotes: string | null
+}
+
+// Mirrors the backend's LiveClass.JoinWindow, for list views that have no isJoinable flag. The
+// server stays authoritative: joinLiveClass refuses outside the window regardless.
+const LIVE_CLASS_JOIN_WINDOW_MS = 15 * 60 * 1000
+
+export function isLiveClassJoinable(c: Pick<LiveClassSummary, 'status' | 'scheduledStart' | 'scheduledEnd'>, now = Date.now()): boolean {
+  if (c.status === 'Live') return true
+  return c.status === 'Scheduled'
+    && now >= new Date(c.scheduledStart).getTime() - LIVE_CLASS_JOIN_WINDOW_MS
+    && now < new Date(c.scheduledEnd).getTime()
 }
 
 // Every live class the caller has booked, ordered by start - past ones included, not just
@@ -417,8 +462,8 @@ export function cancelLiveClassBooking(liveClassId: string): Promise<{ liveClass
   return apiFetch(`/api/learning/live-classes/${liveClassId}/bookings/me`, { method: 'DELETE' })
 }
 
-// Minted fresh on every call and short-lived, so fetch it at the moment of joining rather than
-// caching it. Succeeds only for a booked attendee or the instructor.
-export function joinLiveClass(liveClassId: string): Promise<{ iframeUrl: string; expiresAt: string }> {
+// Fetch at the moment of joining rather than caching: staff can change the details, and the
+// server only hands them out to a booked attendee or the instructor while the class is joinable.
+export function joinLiveClass(liveClassId: string): Promise<LiveClassMeeting> {
   return apiFetch(`/api/learning/live-classes/${liveClassId}/join`)
 }

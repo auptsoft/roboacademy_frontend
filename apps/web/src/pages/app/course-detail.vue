@@ -513,8 +513,8 @@ watch(() => route.params.id, load, { immediate: true })
 
   <div v-else-if="status === 'not-found'" class="flex flex-col items-center gap-3 py-24 text-center">
     <div class="w-12 h-12 rounded-full bg-(--bg-3) flex items-center justify-center text-(--fg-4)"><Compass :size="22" /></div>
-    <div class="text-sm font-semibold text-(--fg-1)">Course not found</div>
-    <p class="m-0 text-[13px] text-(--fg-3) max-w-80">This course may have been removed, or the link is incorrect.</p>
+    <div class="text-sm font-semibold text-(--fg-1)">Course not available</div>
+    <p class="m-0 text-[13px] text-(--fg-3) max-w-80">This course may have been removed, isn't published yet, or is only available through your school.</p>
     <RaButton variant="secondary" @click="router.push('/app/courses')">Back to Courses</RaButton>
   </div>
 

@@ -3,9 +3,21 @@ import { apiFetch, apiFetchPaged, type PageMeta } from '@/api/client'
 export type LessonType = 'Video' | 'Reading' | 'Interactive' | 'Simulation' | 'Pdf'
 export type CourseState = 'Draft' | 'Published' | 'Retired'
 export type CourseLevel = 'Beginner' | 'Intermediate' | 'Advanced'
+export type CourseVisibility = 'Public' | 'ClassesOnly' | 'Hidden'
+export type EnrolmentSource = 'Self' | 'Path' | 'Admin' | 'Class'
 
 export const LESSON_TYPES: LessonType[] = ['Video', 'Reading', 'Interactive', 'Simulation', 'Pdf']
 export const COURSE_LEVELS: CourseLevel[] = ['Beginner', 'Intermediate', 'Advanced']
+
+export const COURSE_VISIBILITIES: { value: CourseVisibility; label: string; description: string }[] = [
+  { value: 'Public', label: 'Public', description: 'Every student in the school sees it in the catalog and can enroll themselves.' },
+  { value: 'ClassesOnly', label: 'Classes only', description: 'Only students in a class this course (or a path containing it) is assigned to can see it.' },
+  { value: 'Hidden', label: 'Hidden', description: 'Not listed for students. They can only get it through an admin or class enrollment.' },
+]
+
+export function visibilityLabel(visibility: CourseVisibility): string {
+  return COURSE_VISIBILITIES.find((v) => v.value === visibility)?.label ?? visibility
+}
 
 export interface LessonItem {
   id: string
@@ -35,6 +47,7 @@ export interface CourseDetail {
   category: string | null
   extraProperties: Record<string, unknown>
   state: CourseState
+  visibility: CourseVisibility
   thumbnailUrl: string | null
   introVideoReference: string | null
   modules: CourseModuleItem[]
@@ -49,6 +62,7 @@ export interface CourseCatalogItem {
   state: CourseState
   thumbnailUrl: string | null
   lessonCount: number
+  visibility: CourseVisibility
 }
 
 export interface CreateCourseRequest {
@@ -64,6 +78,7 @@ export interface CreatedCourse {
 
 export interface ListCourseCatalogFilters {
   state?: CourseState
+  visibility?: CourseVisibility
   search?: string
 }
 
@@ -72,6 +87,7 @@ export function listCourseCatalog(
 ): Promise<{ items: CourseCatalogItem[]; meta: PageMeta }> {
   const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
   if (filters.state) params.set('state', filters.state)
+  if (filters.visibility) params.set('visibility', filters.visibility)
   if (filters.search) params.set('search', filters.search)
   return apiFetchPaged<CourseCatalogItem>(`/api/learning/courses?${params}`)
 }
@@ -111,6 +127,15 @@ export function createCourse(request: CreateCourseRequest): Promise<CreatedCours
 
 export function publishCourse(courseId: string): Promise<{ id: string; state: CourseState }> {
   return apiFetch(`/api/learning/courses/${courseId}/publish`, { method: 'POST' })
+}
+
+export function setCourseVisibility(
+  courseId: string, visibility: CourseVisibility,
+): Promise<{ id: string; visibility: CourseVisibility }> {
+  return apiFetch(`/api/learning/admin/courses/${courseId}/visibility`, {
+    method: 'PUT',
+    body: JSON.stringify({ visibility }),
+  })
 }
 
 export function unpublishCourse(courseId: string): Promise<{ id: string; state: CourseState }> {
@@ -400,6 +425,7 @@ export interface LiveClassListItem {
   courseId: string
   title: string
   scheduledStart: string
+  scheduledEnd: string
   status: LiveClassStatus
 }
 
@@ -414,9 +440,19 @@ export interface LiveClassDetail {
   bookedCount: number
   status: LiveClassStatus
   isCallerBooked: boolean
+  joinOpensAt: string
+  hasMeetingDetails: boolean
+  isJoinable: boolean
 }
 
-export interface CreateLiveClassRequest {
+// The class runs in an external tool (Zoom, Meet, ...); learners see these from joinOpensAt.
+export interface LiveClassMeeting {
+  meetingUrl: string | null
+  meetingCode: string | null
+  meetingNotes: string | null
+}
+
+export interface CreateLiveClassRequest extends Partial<LiveClassMeeting> {
   courseId: string
   lessonId?: string
   title: string
@@ -448,6 +484,24 @@ export function cancelLiveClass(liveClassId: string): Promise<{ id: string; stat
   return apiFetch(`/api/learning/live-classes/${liveClassId}/cancel`, { method: 'POST' })
 }
 
+// Staff view - no join-window gating, unlike the learner-facing /join.
+export function getLiveClassMeeting(liveClassId: string): Promise<LiveClassMeeting> {
+  return apiFetch(`/api/learning/live-classes/${liveClassId}/meeting`)
+}
+
+// Replaces all three fields; null/blank clears one.
+export function updateLiveClassMeeting(liveClassId: string, meeting: LiveClassMeeting): Promise<LiveClassMeeting> {
+  return apiFetch(`/api/learning/live-classes/${liveClassId}/meeting`, { method: 'PUT', body: JSON.stringify(meeting) })
+}
+
+export function startLiveClass(liveClassId: string): Promise<{ id: string; status: LiveClassStatus }> {
+  return apiFetch(`/api/learning/live-classes/${liveClassId}/start`, { method: 'POST' })
+}
+
+export function endLiveClass(liveClassId: string): Promise<{ id: string; status: LiveClassStatus }> {
+  return apiFetch(`/api/learning/live-classes/${liveClassId}/end`, { method: 'POST' })
+}
+
 export interface CourseEnrolmentItem {
   enrolmentId: string
   userId: string
@@ -455,6 +509,8 @@ export interface CourseEnrolmentItem {
   email: string
   status: string
   enrolledAt: string
+  sources: EnrolmentSource[]
+  dueAt: string | null
 }
 
 export function listCourseEnrolments(
@@ -464,10 +520,30 @@ export function listCourseEnrolments(
   return apiFetchPaged<CourseEnrolmentItem>(`/api/learning/admin/courses/${courseId}/enrolments?${params}`)
 }
 
-export function adminEnrolUser(courseId: string, userId: string): Promise<{ courseId: string; userId: string }> {
+export function adminEnrolUser(
+  courseId: string, userId: string, dueAt?: string | null,
+): Promise<{ courseId: string; userId: string }> {
   return apiFetch(`/api/learning/admin/courses/${courseId}/enrolments`, {
     method: 'POST',
-    body: JSON.stringify({ userId }),
+    body: JSON.stringify({ userId, dueAt: dueAt ?? null }),
+  })
+}
+
+export function adminBulkEnrol(
+  courseId: string, request: { userIds?: string[]; classIds?: string[]; dueAt?: string | null },
+): Promise<{ courseId: string; enrolled: number; alreadyEnrolled: number }> {
+  return apiFetch(`/api/learning/admin/courses/${courseId}/enrolments/bulk`, {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
+}
+
+export function adminBulkWithdraw(
+  courseId: string, userIds: string[],
+): Promise<{ courseId: string; withdrawn: number; skipped: number }> {
+  return apiFetch(`/api/learning/admin/courses/${courseId}/enrolments/withdraw-bulk`, {
+    method: 'POST',
+    body: JSON.stringify({ userIds }),
   })
 }
 
@@ -475,11 +551,6 @@ export function adminWithdrawEnrolment(
   courseId: string, userId: string,
 ): Promise<{ courseId: string; userId: string; status: string }> {
   return apiFetch(`/api/learning/admin/courses/${courseId}/enrolments/${userId}/withdraw`, { method: 'POST' })
-}
-
-// Succeeds only for a booked attendee or the instructor.
-export function joinLiveClass(liveClassId: string): Promise<{ iframeUrl: string; expiresAt: string }> {
-  return apiFetch(`/api/learning/live-classes/${liveClassId}/join`)
 }
 
 // --- Cross-tenant course copy (platform admin only, from the platform tenant) ---

@@ -5,9 +5,7 @@ import { mainNav } from './nav-items'
 const route = useRoute()
 const router = useRouter()
 
-const tabs = [
-  ...mainNav
-]
+const tabs = mainNav.filter(item => item.mobile !== false)
 
 function isActive(path: string) {
   if (path === '/app') return route.path === '/app'

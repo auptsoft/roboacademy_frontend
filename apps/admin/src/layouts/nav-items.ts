@@ -1,7 +1,7 @@
 import {
   LayoutGrid, Users, Building2, Settings2, GraduationCap, ScrollText,
   BookOpen, Route, Video, ClipboardList, HelpCircle, FileQuestion, Bot, BadgeCheck, ClipboardCheck,
-  UserCheck,
+  UserCheck, CalendarDays, CalendarRange, Megaphone,
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
 import { getActiveTenantId } from '@/store/auth'
@@ -16,7 +16,9 @@ export interface AdminNavLeaf {
   // A function defers resolution to render time - needed for entries whose target depends on
   // which tenant is currently active (e.g. "School Setup" while impersonating another tenant).
   path: string | (() => string)
-  permission?: string
+  // Any one of these grants visibility (e.g. Courses: authors, and school admins who only
+  // manage visibility).
+  permission?: string | string[]
   // Hides this entry while viewing another tenant via enterTenant - for platform-wide screens
   // (e.g. the full Tenants list) that don't make sense to reach mid-impersonation.
   hiddenWhileImpersonating?: boolean
@@ -56,7 +58,7 @@ export const adminNav: AdminNavEntry[] = [
     label: 'Learning',
     icon: BookOpen,
     items: [
-      { id: 'courses', label: 'Courses', icon: BookOpen, path: '/courses', permission: 'learning:courses:author' },
+      { id: 'courses', label: 'Courses', icon: BookOpen, path: '/courses', permission: ['learning:courses:author', 'learning:courses:manage-visibility'] },
       { id: 'paths', label: 'Learning Paths', icon: Route, path: '/paths', permission: 'learning:courses:author' },
       { id: 'live-classes', label: 'Live Classes', icon: Video, path: '/live-classes', permission: 'learning:courses:author' },
       { id: 'enrollments', label: 'Enrollments', icon: UserCheck, path: '/enrollments', permission: 'learning:enrolments:manage' },
@@ -80,6 +82,9 @@ export const adminNav: AdminNavEntry[] = [
       { id: 'sessions', label: 'Sessions', icon: Bot, path: '/roboticslab/sessions', permission: 'roboticslab:robots:manage' },
     ],
   },
+  { id: 'events', label: 'Events', icon: CalendarDays, path: '/events', permission: 'scheduling:events:manage' },
+  { id: 'calendar', label: 'Calendar', icon: CalendarRange, path: '/calendar', permission: 'scheduling:events:manage' },
+  { id: 'announcements', label: 'Announcements', icon: Megaphone, path: '/announcements', permission: 'notifications:announcements:manage' },
   { id: 'certificates', label: 'Certificates', icon: BadgeCheck, path: '/certificates', permission: 'certification:certificates:issue' },
   { id: 'tenants', label: 'Tenants', icon: Building2, path: '/tenants', permission: 'tenancy:manage', hiddenWhileImpersonating: true },
   { id: 'audit', label: 'Audit Log', icon: ScrollText, path: '/audit', permission: 'identity:audit:view' },

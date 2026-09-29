@@ -113,12 +113,32 @@ export interface ClassStudent {
   fullName: string
 }
 
+export interface ClassCourseAssignment {
+  courseId: string
+  title: string
+  state: 'Draft' | 'Published' | 'Retired'
+  visibility: 'Public' | 'ClassesOnly' | 'Hidden'
+  dueAt: string | null
+  assignedAt: string
+}
+
+export interface ClassPathAssignment {
+  pathId: string
+  title: string
+  state: 'Draft' | 'Published'
+  courseCount: number
+  dueAt: string | null
+  assignedAt: string
+}
+
 export interface ClassDetail {
   classId: string
   name: string
   departmentId: string | null
   staff: ClassStaffMember[]
   students: ClassStudent[]
+  courses: ClassCourseAssignment[]
+  paths: ClassPathAssignment[]
   createdAt: string
   updatedAt: string
   deletedAt: string | null
@@ -171,8 +191,66 @@ export function addClassStudent(classId: string, userId: string): Promise<{ clas
 export function removeClassStudent(
   classId: string,
   userId: string,
-): Promise<{ classId: string; studentCount: number }> {
-  return apiFetch(`/api/admin/identity/classes/${classId}/students/${userId}`, { method: 'DELETE' })
+  withdraw = false,
+): Promise<{ classId: string; studentCount: number; withdrawn: number }> {
+  return apiFetch(`/api/admin/identity/classes/${classId}/students/${userId}?withdraw=${withdraw}`, { method: 'DELETE' })
+}
+
+export function assignClassCourse(
+  classId: string, courseId: string, dueAt?: string | null,
+): Promise<{ classId: string; courseId: string; enrolledCount: number }> {
+  return apiFetch(`/api/admin/identity/classes/${classId}/courses`, {
+    method: 'POST',
+    body: JSON.stringify({ courseId, dueAt: dueAt ?? null }),
+  })
+}
+
+export function unassignClassCourse(
+  classId: string, courseId: string, withdraw: boolean,
+): Promise<{ classId: string; courseId: string; withdrawnCount: number; keptCount: number }> {
+  return apiFetch(`/api/admin/identity/classes/${classId}/courses/${courseId}?withdraw=${withdraw}`, {
+    method: 'DELETE',
+  })
+}
+
+export function assignClassPath(
+  classId: string, pathId: string, dueAt?: string | null,
+): Promise<{ classId: string; pathId: string; studentsStarted: number; coursesEnrolled: number }> {
+  return apiFetch(`/api/admin/identity/classes/${classId}/paths`, {
+    method: 'POST',
+    body: JSON.stringify({ pathId, dueAt: dueAt ?? null }),
+  })
+}
+
+export function unassignClassPath(
+  classId: string, pathId: string, withdraw: boolean,
+): Promise<{ classId: string; pathId: string; withdrawnCount: number }> {
+  return apiFetch(`/api/admin/identity/classes/${classId}/paths/${pathId}?withdraw=${withdraw}`, {
+    method: 'DELETE',
+  })
+}
+
+export type ClassProgressStatus = 'NotEnrolled' | 'Active' | 'Completed' | 'Withdrawn'
+
+export interface ClassProgressCell {
+  courseId: string
+  status: ClassProgressStatus
+  completedLessons: number
+  totalLessons: number
+  percent: number
+  completedAt: string | null
+  dueAt: string | null
+  overdue: boolean
+}
+
+export interface ClassProgress {
+  classId: string
+  courses: { courseId: string; title: string; state: string; dueAt: string | null }[]
+  students: { userId: string; fullName: string; email: string; courses: ClassProgressCell[] }[]
+}
+
+export function getClassProgress(classId: string): Promise<ClassProgress> {
+  return apiFetch<ClassProgress>(`/api/admin/identity/classes/${classId}/progress`)
 }
 
 export interface AdminDepartment {

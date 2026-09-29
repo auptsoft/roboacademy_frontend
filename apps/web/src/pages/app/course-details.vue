@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { RaButton, RaChip } from '@roboacademy/ui'
 import { ArrowLeft, ArrowRight, Loader2, AlertTriangle, Compass, Play, Video, BookOpen, Puzzle, Cpu, FileText } from 'lucide-vue-next'
 import { ApiError } from '@/api/client'
-import { getCourse, getCourseIntroVideoUrl, enrolInCourse, getMyEnrolments, withdrawEnrolment, type CourseDetail } from '@/api/learning'
+import { getCourse, getCourseIntroVideoUrl, enrolInCourse, getMyEnrolments, withdrawEnrolment, isSchoolAssigned, type CourseDetail } from '@/api/learning'
 
 const route = useRoute()
 const router = useRouter()
@@ -18,6 +18,10 @@ const course = ref<CourseDetail | null>(null)
 const enrollState = ref<'idle' | 'enrolling' | 'enrolled' | 'error'>('idle')
 const enrollError = ref('')
 const enrolmentId = ref<string | null>(null)
+// School-assigned (admin/class) enrolments can't be dropped by the student.
+const canWithdraw = ref(true)
+const assigned = ref(false)
+const dueAt = ref<string | null>(null)
 
 const unenrollState = ref<'idle' | 'unenrolling' | 'error'>('idle')
 const unenrollError = ref('')
@@ -34,6 +38,9 @@ async function load() {
   enrollState.value = 'idle'
   enrollError.value = ''
   enrolmentId.value = null
+  canWithdraw.value = true
+  assigned.value = false
+  dueAt.value = null
   unenrollState.value = 'idle'
   unenrollError.value = ''
   try {
@@ -60,6 +67,9 @@ async function checkEnrolment(courseId: string) {
     if (enrolment) {
       enrollState.value = 'enrolled'
       enrolmentId.value = enrolment.id
+      canWithdraw.value = enrolment.canWithdraw
+      assigned.value = isSchoolAssigned(enrolment)
+      dueAt.value = enrolment.dueAt
     }
   } catch {
     // ignore — see comment above
@@ -92,6 +102,9 @@ async function enroll() {
     if (err instanceof ApiError && err.status === 409) {
       enrollState.value = 'enrolled'
       await checkEnrolment(course.value.id)
+    } else if (err instanceof ApiError && err.status === 403) {
+      enrollState.value = 'error'
+      enrollError.value = 'This course is only available through your school. Ask your teacher to enroll you.'
     } else {
       enrollState.value = 'error'
       enrollError.value = err instanceof ApiError ? err.message : 'Something went wrong.'
@@ -134,8 +147,8 @@ watch(() => route.params.id, load, { immediate: true })
     <!-- Not found -->
     <div v-else-if="status === 'not-found'" class="flex flex-col items-center gap-3 py-24 text-center">
       <div class="w-12 h-12 rounded-full bg-(--bg-3) flex items-center justify-center text-(--fg-4)"><Compass :size="22" /></div>
-      <div class="text-sm font-semibold text-(--fg-1)">Course not found</div>
-      <p class="m-0 text-[13px] text-(--fg-3) max-w-80">This course may have been removed, or the link is incorrect.</p>
+      <div class="text-sm font-semibold text-(--fg-1)">Course not available</div>
+      <p class="m-0 text-[13px] text-(--fg-3) max-w-80">This course may have been removed, isn't published yet, or is only available through your school.</p>
       <RaButton variant="secondary" @click="router.push('/app/explore')">Back to Explore</RaButton>
     </div>
 
@@ -193,7 +206,11 @@ watch(() => route.params.id, load, { immediate: true })
                 Enrolled - Go to course
                 <template #icon-right><ArrowRight :size="14" /></template>
               </RaButton>
+              <p v-if="assigned" class="mt-2 mb-0 text-center text-xs text-(--fg-3)">
+                Assigned by your school<template v-if="dueAt"> · due {{ new Date(dueAt).toLocaleDateString() }}</template>
+              </p>
               <button
+                v-if="canWithdraw"
                 class="mt-2 w-full text-center text-[13px] text-(--fg-3) bg-transparent border-0 cursor-pointer hover:text-(--danger) disabled:opacity-60 disabled:cursor-not-allowed"
                 :disabled="unenrollState === 'unenrolling'"
                 @click="unenroll"

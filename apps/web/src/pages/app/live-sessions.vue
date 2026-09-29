@@ -6,7 +6,7 @@ import { RaCard, RaChip, RaButton, formatDate } from '@roboacademy/ui'
 import { ApiError } from '@/api/client'
 import {
   getMyLiveClasses, listLiveClasses, bookLiveClass, cancelLiveClassBooking,
-  getMyEnrolledCourses,
+  getMyEnrolledCourses, isLiveClassJoinable,
   type LiveClassSummary, type LiveClassStatus,
 } from '@/api/learning'
 
@@ -56,7 +56,7 @@ onMounted(() => load())
 
 // Live first, then anything still to come, then what has already happened.
 const mySessions = computed(() => {
-  const rank = (c: LiveClassSummary) => (c.status === 'Live' ? 0 : c.status === 'Scheduled' ? 1 : 2)
+  const rank = (c: LiveClassSummary) => (isLiveClassJoinable(c) ? 0 : c.status === 'Scheduled' ? 1 : 2)
   return [...booked.value].sort(
     (a, b) => rank(a) - rank(b) || a.scheduledStart.localeCompare(b.scheduledStart),
   )
@@ -139,7 +139,7 @@ async function run(liveClassId: string, action: (id: string) => Promise<unknown>
           </div>
 
           <div class="live-row__actions">
-            <RouterLink v-if="session.status === 'Live'" :to="`/app/live-sessions/${session.id}`">
+            <RouterLink v-if="isLiveClassJoinable(session)" :to="`/app/live-sessions/${session.id}`">
               <RaButton>Join now</RaButton>
             </RouterLink>
             <RaButton

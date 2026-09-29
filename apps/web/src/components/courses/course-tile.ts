@@ -18,6 +18,8 @@ export function enrolledTileProps(c: EnrolledCourseSummary) {
     metaRight: `${c.completedLessons}/${c.totalLessons} Lessons`,
     tag: `${c.progressPercent}%`,
     status: enrolledCourseStatus(c),
+    assigned: c.assigned,
+    dueAt: c.courseCompleted ? null : c.dueAt,
   }
 }
 

@@ -33,8 +33,19 @@
   --brand-blue-ring:   color-mix(in srgb, var(--brand-blue) 35%, transparent);
 }
 
+/* Softer dark neutrals than the shared scale (web only; admin keeps the originals).
+   :not() is required — a bare :root here would outrank the shared light-theme rule. */
+:root:not([data-theme="light"]) {
+  --bg-0: #171A20;
+  --bg-1: #1F232A;
+  --bg-2: #252A32;
+  --bg-3: #2C313A;
+  --bg-4: #333945;
+  --bg-5: #3D4452;
+}
+
 [data-theme="light"] {
-  --canvas:            #F1F2F4;
+  --canvas:           #F1F2F4;
   --surface:           #FFFFFF;
   --surface-shadow:    0 1px 2px rgba(15, 23, 42, 0.04);
   --brand-navy:        var(--tenant-primary, #1B2F4E);

@@ -23,7 +23,9 @@ function isActive(path: AdminNavLeaf['path']) {
 
 function isVisible(item: AdminNavLeaf): boolean {
   if (item.hiddenWhileImpersonating && isImpersonating()) return false
-  return !item.permission || hasPermission(item.permission)
+  if (!item.permission) return true
+  const required = Array.isArray(item.permission) ? item.permission : [item.permission]
+  return required.some(hasPermission)
 }
 
 function visibleItems(group: AdminNavGroup) {
