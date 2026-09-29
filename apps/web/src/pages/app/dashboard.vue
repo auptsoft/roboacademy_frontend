@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { RaCard, RaButton, RaPathCard } from '@roboacademy/ui'
+import { RaCard, RaButton } from '@roboacademy/ui'
 import { Loader2, AlertTriangle } from 'lucide-vue-next'
 import {
   getMyEnrolledCourses, listCourseCatalog, getMyProgressEvents, getMyLiveClasses,
@@ -16,7 +16,7 @@ import CourseCatalogCard from '@/components/explore/CourseCatalogCard.vue'
 import { getCurrentUser } from '@/store/auth'
 import { brandingKey } from '@/branding'
 import CourseTile from '@/components/courses/CourseTile.vue'
-import { enrolledTileProps } from '@/components/courses/course-tile'
+import { enrolledTileProps, enrolledPathTileProps } from '@/components/courses/course-tile'
 import StatCard from '@/components/dashboard/StatCard.vue'
 import HeroCarousel, { type HeroSlide } from '@/components/dashboard/HeroCarousel.vue'
 import DataTable, { type DataTableColumn } from '@/components/dashboard/DataTable.vue'
@@ -430,16 +430,11 @@ const heroSlides = computed<HeroSlide[]>(() => {
         <p class="m-0 text-[13px] text-(--fg-3)">Couldn't load your learning paths.</p>
         <RaButton variant="secondary" @click="loadEnrolledPaths">Try again</RaButton>
       </div>
-      <div v-else class="grid gap-4.5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        <RaPathCard
+      <div v-else class="grid gap-x-6 gap-y-9 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <CourseTile
           v-for="p in enrolledPaths.slice(0, 4)"
           :key="p.pathEnrolmentId"
-          :title="p.title"
-          :description="p.description ?? ''"
-          :course-count="p.courseCount"
-          :completed-courses="p.completedCourses"
-          :progress="p.progressPercent"
-          :thumbnail-url="p.thumbnailUrl"
+          v-bind="enrolledPathTileProps(p)"
           @open="openPath(p.pathId)"
         />
       </div>
@@ -481,15 +476,11 @@ const heroSlides = computed<HeroSlide[]>(() => {
         <p v-else-if="!suggestedPaths.length" class="m-0 text-[13px] text-(--fg-3)">
           No suggestions yet — <button class="bg-transparent border-0 p-0 cursor-pointer text-(--link) underline" @click="router.push('/app/explore?tab=paths')">explore learning paths</button> to find your next one.
         </p>
-        <div v-else class="grid gap-4.5 grid-cols-1 sm:grid-cols-2">
+        <div v-else class="grid gap-x-6 gap-y-9 grid-cols-1 sm:grid-cols-2">
           <PathCatalogCard
             v-for="p in suggestedPaths.slice(0, 2)"
             :key="p.id"
-            :id="p.id"
-            :title="p.title"
-            :description="p.description"
-            :thumbnail-url="p.thumbnailUrl"
-            :course-count="p.courseCount"
+            v-bind="p"
           />
         </div>
       </section>
