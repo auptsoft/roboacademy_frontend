@@ -36,8 +36,8 @@
 /* Softer dark neutrals than the shared scale (web only; admin keeps the originals).
    :not() is required — a bare :root here would outrank the shared light-theme rule. */
 :root:not([data-theme="light"]) {
-  --bg-0: #171A20;
-  --bg-1: #1F232A;
+  --bg-0: #070A10;
+  /* --bg-1: #1F232A; */
   --bg-2: #252A32;
   --bg-3: #2C313A;
   --bg-4: #333945;
