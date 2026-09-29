@@ -1,3 +1,5 @@
+import { getEnv } from '@/lib/runtime-env'
+
 export interface AuthUser {
   userId: string
   email: string
@@ -55,6 +57,11 @@ export function setStoredUser(user: AuthUser): void {
 
 export function getStoredTenantId(): string | null {
   return localStorage.getItem(TENANT_ID_KEY)
+}
+
+export function getTenantId(): string {
+  const PLATFORM_TENANT_ID = getEnv('VITE_PLATFORM_TENANT_ID')
+  return getStoredTenantId() || PLATFORM_TENANT_ID
 }
 
 export function setStoredTenantId(tenantId: string): void {

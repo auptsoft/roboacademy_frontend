@@ -14,7 +14,7 @@ import { listCertificates } from '@/api/certification'
 import { listSessions } from '@/api/roboticsLab'
 import { listAttempts } from '@/api/assessment'
 import { hasPermission, getImpersonationTarget } from '@/store/auth'
-import { getStoredTenantId } from '@/api/session'
+import { getTenantId } from '@/api/session'
 import { getEnv } from '@/lib/runtime-env'
 
 const router = useRouter()
@@ -30,7 +30,7 @@ const usersError = ref('')
 const totalTenants = ref(0)
 const totalUsers = ref(0)
 
-const storedTenantId = getStoredTenantId()
+const storedTenantId = getTenantId()
 const isPlatformWide = computed(() => PLATFORM_TENANT_ID === storedTenantId)
 const impersonation = computed(() => getImpersonationTarget())
 
