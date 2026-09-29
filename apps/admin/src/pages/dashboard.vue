@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { RaKpi, RaCard, RaChip, RaStatusDot, formatDate } from '@roboacademy/ui'
 import { ArrowRight, Building2, Users as UsersIcon, History } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import UserPreviewPopover from '@/components/UserPreviewPopover.vue'
-import { ApiError } from '@/api/client'
 import type { PageMeta } from '@/api/client'
 import { listTenants, type Tenant } from '@/api/tenancy'
 import { listUsers, getIdentityAuditLog, type AdminUser, type IdentityAuditLogItem } from '@/api/identity'
@@ -16,19 +15,29 @@ import { listAttempts } from '@/api/assessment'
 import { hasPermission, getImpersonationTarget } from '@/store/auth'
 import { getTenantId } from '@/api/session'
 import { getEnv } from '@/lib/runtime-env'
+import { useCachedQuery } from '@/composables/useCachedQuery'
 
 const router = useRouter()
 
 const PLATFORM_TENANT_ID = getEnv('VITE_PLATFORM_TENANT_ID')
 
-const tenants = ref<Tenant[]>([])
-const users = ref<AdminUser[]>([])
-const tenantsLoading = ref(true)
-const usersLoading = ref(true)
-const tenantsError = ref('')
-const usersError = ref('')
-const totalTenants = ref(0)
-const totalUsers = ref(0)
+const {
+  data: tenantsData, loading: tenantsLoading, error: tenantsError,
+} = useCachedQuery('dashboard:tenants', () => listTenants(1, 5), {
+  enabled: hasPermission('tenancy:manage'),
+  errorMessage: 'Failed to load tenants.',
+})
+const tenants = computed<Tenant[]>(() => tenantsData.value?.items ?? [])
+const totalTenants = computed(() => tenantsData.value?.meta.totalCount ?? 0)
+
+const {
+  data: usersData, loading: usersLoading, error: usersError,
+} = useCachedQuery('dashboard:users', () => listUsers(1, 5), {
+  enabled: hasPermission('identity:users:manage'),
+  errorMessage: 'Failed to load users.',
+})
+const users = computed<AdminUser[]>(() => usersData.value?.items ?? [])
+const totalUsers = computed(() => usersData.value?.meta.totalCount ?? 0)
 
 const storedTenantId = getTenantId()
 const isPlatformWide = computed(() => PLATFORM_TENANT_ID === storedTenantId)
@@ -58,83 +67,32 @@ const roleTone: Record<string, 'admin' | 'instructor' | 'student' | 'neutral'> =
 }
 
 // --- Module KPI tiles (each tenant-scoped to whichever tenant is currently active) ---
-const totalCourses = ref<number | null>(null)
-const totalLiveClasses = ref<number | null>(null)
-const totalCertificates = ref<number | null>(null)
-const totalRoboticsSessions = ref<number | null>(null)
-const totalPendingGrading = ref<number | null>(null)
-
-async function loadCount(
-  target: typeof totalCourses,
-  fetcher: () => Promise<{ meta: PageMeta }>,
-): Promise<void> {
-  try {
-    const result = await fetcher()
-    target.value = result.meta.totalCount
-  } catch {
-    target.value = null
-  }
+// A failed count shows as '—' (null) rather than an error message.
+function useCount(key: string, fetcher: () => Promise<{ meta: PageMeta }>, enabled = true) {
+  const { data } = useCachedQuery(`dashboard:count:${key}`, fetcher, { enabled })
+  return computed(() => data.value?.meta.totalCount ?? null)
 }
 
+const totalCourses = useCount('courses', () => listCourseCatalog({}, 1, 1))
+const totalLiveClasses = useCount('live-classes', () => listLiveClasses(undefined, 1, 1))
+const totalCertificates = useCount(
+  'certificates', () => listCertificates({}, 1, 1), hasPermission('certification:certificates:issue'),
+)
+const totalRoboticsSessions = useCount(
+  'robotics-sessions', () => listSessions({}, 1, 1), hasPermission('roboticslab:robots:manage'),
+)
+const totalPendingGrading = useCount(
+  'pending-grading', () => listAttempts({ status: 'Submitted' }, 1, 1), hasPermission('assessment:assessments:author'),
+)
+
 // --- Recent activity ---
-const activity = ref<IdentityAuditLogItem[]>([])
-const activityLoading = ref(true)
-const activityError = ref('')
-
-onMounted(async () => {
-  if (hasPermission('tenancy:manage')) {
-    try {
-      const result = await listTenants(1, 5)
-      tenants.value = result.items
-      totalTenants.value = result.meta.totalCount
-    } catch (error) {
-      tenantsError.value = error instanceof ApiError ? error.message : 'Failed to load tenants.'
-    } finally {
-      tenantsLoading.value = false
-    }
-  } else {
-    tenantsLoading.value = false
-  }
-
-  if (hasPermission('identity:users:manage')) {
-    try {
-      const result = await listUsers(1, 5)
-      users.value = result.items
-      totalUsers.value = result.meta.totalCount
-    } catch (error) {
-      usersError.value = error instanceof ApiError ? error.message : 'Failed to load users.'
-    } finally {
-      usersLoading.value = false
-    }
-  } else {
-    usersLoading.value = false
-  }
-
-  loadCount(totalCourses, () => listCourseCatalog({}, 1, 1))
-  loadCount(totalLiveClasses, () => listLiveClasses(undefined, 1, 1))
-  if (hasPermission('certification:certificates:issue')) {
-    loadCount(totalCertificates, () => listCertificates({}, 1, 1))
-  }
-  if (hasPermission('roboticslab:robots:manage')) {
-    loadCount(totalRoboticsSessions, () => listSessions({}, 1, 1))
-  }
-  if (hasPermission('assessment:assessments:author')) {
-    loadCount(totalPendingGrading, () => listAttempts({ status: 'Submitted' }, 1, 1))
-  }
-
-  if (hasPermission('identity:audit:view')) {
-    try {
-      const result = await getIdentityAuditLog(1, 8)
-      activity.value = result.items
-    } catch (error) {
-      activityError.value = error instanceof ApiError ? error.message : 'Failed to load activity.'
-    } finally {
-      activityLoading.value = false
-    }
-  } else {
-    activityLoading.value = false
-  }
+const {
+  data: activityData, loading: activityLoading, error: activityError,
+} = useCachedQuery('dashboard:activity', () => getIdentityAuditLog(1, 8), {
+  enabled: hasPermission('identity:audit:view'),
+  errorMessage: 'Failed to load activity.',
 })
+const activity = computed<IdentityAuditLogItem[]>(() => activityData.value?.items ?? [])
 </script>
 
 <template>

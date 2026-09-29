@@ -1,6 +1,7 @@
 import { reactive } from 'vue'
 import { apiFetch, postImpersonationToken, postToken } from '@/api/client'
 import { applyTenantBranding } from '@/branding'
+import { clearQueryCache } from '@/composables/useCachedQuery'
 import {
   beginImpersonation,
   clearSession,
@@ -74,6 +75,7 @@ export async function login(email: string, password: string): Promise<void> {
 
 export function logout(): void {
   clearSession()
+  clearQueryCache()
   state.user = null
 }
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, onMounted, ref } from 'vue'
+import { computed, inject } from 'vue'
 import { useRouter } from 'vue-router'
 import { RaCard, RaButton } from '@roboacademy/ui'
 import { Loader2, AlertTriangle } from 'lucide-vue-next'
@@ -14,6 +14,7 @@ import { getMyCertificates, type CertificateItem } from '@/api/certification'
 import { getMyCalendar, type CalendarItem } from '@/api/scheduling'
 import CourseCatalogCard from '@/components/explore/CourseCatalogCard.vue'
 import { getCurrentUser } from '@/store/auth'
+import { useCachedQuery } from '@/composables/useCachedQuery'
 import { brandingKey } from '@/branding'
 import CourseTile from '@/components/courses/CourseTile.vue'
 import { enrolledTileProps, enrolledPathTileProps } from '@/components/courses/course-tile'
@@ -41,19 +42,10 @@ function formatCalendarParts(iso: string): { day: string; date: string; time: st
 }
 
 // Enrolled courses
-const enrolledCourses = ref<EnrolledCourseSummary[]>([])
-const enrolledStatus = ref<'loading' | 'idle' | 'error'>('loading')
-
-async function loadEnrolledCourses() {
-  enrolledStatus.value = 'loading'
-  try {
-    enrolledCourses.value = await getMyEnrolledCourses()
-    enrolledStatus.value = 'idle'
-  } catch {
-    enrolledStatus.value = 'error'
-  }
-}
-onMounted(loadEnrolledCourses)
+const {
+  data: enrolledCoursesData, status: enrolledStatus, load: loadEnrolledCourses,
+} = useCachedQuery('dashboard:enrolled-courses', getMyEnrolledCourses)
+const enrolledCourses = computed<EnrolledCourseSummary[]>(() => enrolledCoursesData.value ?? [])
 
 const activeCoursesCount = computed(() => enrolledCourses.value.length)
 const completedLessonsCount = computed(() => enrolledCourses.value.reduce((sum, c) => sum + c.completedLessons, 0))
@@ -74,22 +66,10 @@ const allEnrolledCoursesCompleted = computed(() =>
 )
 
 // Certificates
-const certificates = ref<CertificateItem[]>([])
-const certificatesCount = ref<number | null>(null)
-const certificatesStatus = ref<'loading' | 'idle' | 'error'>('loading')
-
-async function loadCertificates() {
-  certificatesStatus.value = 'loading'
-  try {
-    const { data, meta } = await getMyCertificates({ pageSize: 100 })
-    certificates.value = data
-    certificatesCount.value = meta.totalCount
-    certificatesStatus.value = 'idle'
-  } catch {
-    certificatesStatus.value = 'error'
-  }
-}
-onMounted(loadCertificates)
+const { data: certificatesData, status: certificatesStatus } =
+  useCachedQuery('dashboard:certificates', () => getMyCertificates({ pageSize: 100 }))
+const certificates = computed<CertificateItem[]>(() => certificatesData.value?.data ?? [])
+const certificatesCount = computed(() => certificatesData.value?.meta.totalCount ?? null)
 
 function courseTitleFor(courseId: string): string {
   return enrolledCourses.value.find(c => c.courseId === courseId)?.title
@@ -104,76 +84,36 @@ function pathTitleFor(pathId: string): string {
 }
 
 // Recommended for you
-const recommendedRaw = ref<CourseCatalogItem[]>([])
-const recommendedStatus = ref<'loading' | 'idle' | 'error'>('loading')
+const {
+  data: recommendedData, status: recommendedStatus, load: loadRecommendedCourses,
+} = useCachedQuery('dashboard:recommended-courses', () => listCourseCatalog({ pageSize: 12 }))
+const recommendedRaw = computed<CourseCatalogItem[]>(() => recommendedData.value?.data ?? [])
 
 const enrolledCourseIds = computed(() => new Set(enrolledCourses.value.map(c => c.courseId)))
 const recommendedCourses = computed(() =>
   recommendedRaw.value.filter(c => !enrolledCourseIds.value.has(c.id)).slice(0, 3),
 )
 
-async function loadRecommendedCourses() {
-  recommendedStatus.value = 'loading'
-  try {
-    const { data } = await listCourseCatalog({ pageSize: 12 })
-    recommendedRaw.value = data
-    recommendedStatus.value = 'idle'
-  } catch {
-    recommendedStatus.value = 'error'
-  }
-}
-onMounted(loadRecommendedCourses)
-
 // My learning paths
-const enrolledPaths = ref<EnrolledPathSummary[]>([])
-const enrolledPathsStatus = ref<'loading' | 'idle' | 'error'>('loading')
-
-async function loadEnrolledPaths() {
-  enrolledPathsStatus.value = 'loading'
-  try {
-    enrolledPaths.value = await getMyEnrolledPaths()
-    enrolledPathsStatus.value = 'idle'
-  } catch {
-    enrolledPathsStatus.value = 'error'
-  }
-}
-onMounted(loadEnrolledPaths)
+const {
+  data: enrolledPathsData, status: enrolledPathsStatus, load: loadEnrolledPaths,
+} = useCachedQuery('dashboard:enrolled-paths', getMyEnrolledPaths)
+const enrolledPaths = computed<EnrolledPathSummary[]>(() => enrolledPathsData.value ?? [])
 
 function openPath(pathId: string) {
   router.push(`/app/explore/paths/${pathId}`)
 }
 
 // Suggested learning paths — backend already excludes paths the user has started.
-const suggestedPaths = ref<LearningPathItem[]>([])
-const suggestedPathsStatus = ref<'loading' | 'idle' | 'error'>('loading')
-
-async function loadSuggestedPaths() {
-  suggestedPathsStatus.value = 'loading'
-  try {
-    const { data } = await getSuggestedLearningPaths({ pageSize: 4 })
-    suggestedPaths.value = data
-    suggestedPathsStatus.value = 'idle'
-  } catch {
-    suggestedPathsStatus.value = 'error'
-  }
-}
-onMounted(loadSuggestedPaths)
+const {
+  data: suggestedPathsData, status: suggestedPathsStatus, load: loadSuggestedPaths,
+} = useCachedQuery('dashboard:suggested-paths', () => getSuggestedLearningPaths({ pageSize: 4 }))
+const suggestedPaths = computed<LearningPathItem[]>(() => suggestedPathsData.value?.data ?? [])
 
 // Recent activity — merged from real progress events, enrolments, and certificates.
-const progressEvents = ref<ProgressEventItem[]>([])
-const activityStatus = ref<'loading' | 'idle' | 'error'>('loading')
-
-async function loadActivity() {
-  activityStatus.value = 'loading'
-  try {
-    const { data } = await getMyProgressEvents({ pageSize: 10 })
-    progressEvents.value = data
-    activityStatus.value = 'idle'
-  } catch {
-    activityStatus.value = 'error'
-  }
-}
-onMounted(loadActivity)
+const { data: progressEventsData, status: activityStatus } =
+  useCachedQuery('dashboard:progress-events', () => getMyProgressEvents({ pageSize: 10 }))
+const progressEvents = computed<ProgressEventItem[]>(() => progressEventsData.value?.data ?? [])
 
 interface ActivityEntry {
   id: string
@@ -236,27 +176,17 @@ const activityLoading = computed(() =>
 
 // Upcoming this week — the unified calendar (booked live classes, lab sessions, events).
 // Booked live classes are still loaded on their own for the hero carousel's "next live" slide.
-const upcomingLiveClasses = ref<LiveClassSummary[]>([])
-const calendarItems = ref<CalendarItem[]>([])
-const upcomingStatus = ref<'loading' | 'idle' | 'error'>('loading')
-
-async function loadUpcoming() {
-  upcomingStatus.value = 'loading'
+const { data: upcomingData, status: upcomingStatus } = useCachedQuery('dashboard:upcoming', async () => {
   const now = new Date()
   const weekAhead = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
-  try {
-    const [liveClasses, calendar] = await Promise.all([
-      getMyLiveClasses(),
-      getMyCalendar(now, weekAhead),
-    ])
-    upcomingLiveClasses.value = liveClasses.data
-    calendarItems.value = calendar
-    upcomingStatus.value = 'idle'
-  } catch {
-    upcomingStatus.value = 'error'
-  }
-}
-onMounted(loadUpcoming)
+  const [liveClasses, calendar] = await Promise.all([
+    getMyLiveClasses(),
+    getMyCalendar(now, weekAhead),
+  ])
+  return { liveClasses: liveClasses.data, calendar }
+})
+const upcomingLiveClasses = computed<LiveClassSummary[]>(() => upcomingData.value?.liveClasses ?? [])
+const calendarItems = computed<CalendarItem[]>(() => upcomingData.value?.calendar ?? [])
 
 const upcoming = computed(() => {
   const now = Date.now()

@@ -1,6 +1,7 @@
 import { reactive } from 'vue'
 import { postToken } from '@/api/client'
 import { getMe } from '@/api/identity'
+import { clearQueryCache } from '@/composables/useCachedQuery'
 import {
   clearSession,
   getExpiresAt,
@@ -45,6 +46,7 @@ export async function login(email: string, password: string): Promise<void> {
 
 export function logout(): void {
   clearSession()
+  clearQueryCache()
   state.user = null
 }
 
