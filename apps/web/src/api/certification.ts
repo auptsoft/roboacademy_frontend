@@ -1,4 +1,4 @@
-import { apiFetch, apiFetchPaged, getTenantId, type PageMeta } from '@/api/client'
+import { apiFetch, apiFetchPaged, type PageMeta } from '@/api/client'
 
 export type CertificateStatus = 'Issued' | 'Revoked'
 
@@ -47,6 +47,8 @@ export interface CertificateVerification {
   /** Only present when the holder has chosen to show it. */
   holderName: string | null
   issuerName: string | null
+  /** The issuing tenant, resolved server-side from the verification id. */
+  tenantId: string
 }
 
 export function getMyCertificates(params: { page?: number; pageSize?: number } = {}): Promise<{ data: CertificateItem[]; meta: PageMeta }> {
@@ -69,21 +71,17 @@ export function setHolderNameVisibility(
   })
 }
 
-// Public: the verifier is usually signed out, so the issuing tenant comes from the link itself
-// (see verificationUrl) rather than whatever tenant this browser last signed in to.
-export function verifyCertificate(verificationId: string, tenantId?: string): Promise<CertificateVerification> {
-  const headers = tenantId ? { 'X-Tenant-Id': tenantId } : undefined
+// Public: the verifier is usually signed out. The id alone identifies the issuing tenant
+// server-side, so whatever tenant this browser last signed in to doesn't matter.
+export function verifyCertificate(verificationId: string): Promise<CertificateVerification> {
   return apiFetch<CertificateVerification>(
     `/api/certification/verify/${encodeURIComponent(verificationId)}`,
-    { headers },
   )
 }
 
-/** Shareable link to the public verify page, carrying the issuing tenant. */
+/** Shareable link to the public verify page. */
 export function verificationUrl(verificationId: string): string {
-  const url = new URL(`/verify/${encodeURIComponent(verificationId)}`, window.location.origin)
-  url.searchParams.set('tenantId', getTenantId())
-  return url.toString()
+  return new URL(`/v/${encodeURIComponent(verificationId)}`, window.location.origin).toString()
 }
 
 export function certificateTitle(cert: Pick<CertificateItem, 'kind' | 'courseTitle' | 'pathTitle'>): string {

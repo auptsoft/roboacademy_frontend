@@ -21,8 +21,10 @@ const router = createRouter({
         },
 
         {
-            // Public certificate verification - reachable signed out (see beforeEach).
-            path: '/verify/:verificationId',
+            // Public certificate verification - reachable signed out (see beforeEach). /verify is
+            // the original (longer) link format, kept so already-shared links keep working.
+            path: '/v/:verificationId',
+            alias: '/verify/:verificationId',
             component: () => import("@/pages/verify.vue"),
             meta: { public: true },
         },

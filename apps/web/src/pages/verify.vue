@@ -2,18 +2,15 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { AlertTriangle, BadgeCheck, Loader2, SearchX, ShieldOff } from 'lucide-vue-next'
-import { ApiError, getTenantId } from '@/api/client'
+import { ApiError } from '@/api/client'
 import { getTenantBranding, type TenantBranding } from '@/api/tenancy'
 import { verifyCertificate, type CertificateVerification } from '@/api/certification'
 import { applyTenantBranding } from '@/branding'
 
-// Public, signed-out page. The issuing tenant travels in ?tenantId= (see verificationUrl) and is
-// used for this request only - never persisted, so it can't switch the viewer's own tenant.
+// Public, signed-out page. The issuing tenant comes back with the verification result (the id
+// alone identifies it), so any ?tenantId= on older links is simply ignored.
 const route = useRoute()
 const verificationId = String(route.params.verificationId ?? '')
-const tenantId = typeof route.query.tenantId === 'string' && route.query.tenantId.trim()
-  ? route.query.tenantId.trim()
-  : getTenantId()
 
 const status = ref<'loading' | 'valid' | 'revoked' | 'not-found' | 'error'>('loading')
 const result = ref<CertificateVerification | null>(null)
@@ -29,13 +26,12 @@ const issuerName = computed(() => result.value?.issuerName ?? branding.value?.na
 
 async function load() {
   status.value = 'loading'
-  getTenantBranding(tenantId)
-    .then((b) => { branding.value = b; applyTenantBranding(b) })
-    .catch(() => { /* Unbranded fallback is fine for verification. */ })
-
   try {
-    result.value = await verifyCertificate(verificationId, tenantId)
+    result.value = await verifyCertificate(verificationId)
     status.value = result.value.valid ? 'valid' : 'revoked'
+    getTenantBranding(result.value.tenantId)
+      .then((b) => { branding.value = b; applyTenantBranding(b) })
+      .catch(() => { /* Unbranded fallback is fine for verification. */ })
   } catch (error) {
     status.value = error instanceof ApiError && error.status === 404 ? 'not-found' : 'error'
   }
