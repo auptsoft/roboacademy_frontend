@@ -7,7 +7,7 @@ import {
   endImpersonation,
   getExpiresAt,
   getImpersonationInfo,
-  getStoredTenantId,
+  getTenantId,
   getStoredUser,
   setSession,
   setStoredUser,
@@ -22,14 +22,14 @@ const state = reactive<{
 }>({
   user: getStoredUser(),
   impersonation: getImpersonationInfo(),
-  activeTenantId: getStoredTenantId(),
+  activeTenantId: getTenantId(),
 })
 
 // Nav items (e.g. "School Setup") that link into /tenants/:tenantId need to know which tenant is
 // currently active and re-resolve when it changes - call this after anything that changes the
 // stored tenant id outside of enterTenant/exitTenant (e.g. the ?tenantId= login flow).
 export function syncActiveTenantId(): void {
-  state.activeTenantId = getStoredTenantId()
+  state.activeTenantId = getTenantId()
 }
 
 export function getActiveTenantId(): string | null {
@@ -124,6 +124,6 @@ export async function enterTenant(tenantId: string, tenantName: string): Promise
 export async function exitTenant(): Promise<void> {
   endImpersonation()
   state.impersonation = null
-  state.activeTenantId = getStoredTenantId()
+  state.activeTenantId = getTenantId()
   await applyTenantBranding()
 }
