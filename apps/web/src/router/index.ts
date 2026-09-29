@@ -21,6 +21,19 @@ const router = createRouter({
         },
 
         {
+            // Public certificate verification - reachable signed out (see beforeEach).
+            path: '/verify/:verificationId',
+            component: () => import("@/pages/verify.vue"),
+            meta: { public: true },
+        },
+
+        {
+            // Printable certificate - outside app-layout so no app chrome reaches the page.
+            path: '/certificates/:id',
+            component: () => import("@/pages/certificate-print.vue"),
+        },
+
+        {
             path: '/app',
             component: () => import("@/pages/app-layout.vue"),
             children: [
@@ -90,6 +103,11 @@ const router = createRouter({
                 },
 
                 {
+                    path: 'certificates',
+                    component: () => import("@/pages/app/certificates.vue")
+                },
+
+                {
                     path: 'notifications',
                     component: () => import("@/pages/app/notifications.vue")
                 },
@@ -109,6 +127,7 @@ const router = createRouter({
 })
 
 router.beforeEach((to) => {
+  if (to.meta.public) return
   if ((to.path !== '/auth' && to.path !== '/landing') && !isAuthenticated()) {
     return '/auth'
   }

@@ -50,6 +50,8 @@ export interface CourseDetail {
   visibility: CourseVisibility
   thumbnailUrl: string | null
   introVideoReference: string | null
+  /** Whether this course's certificate needs a passed practical session. */
+  requiresPractical: boolean
   modules: CourseModuleItem[]
 }
 
@@ -135,6 +137,15 @@ export function setCourseVisibility(
   return apiFetch(`/api/learning/admin/courses/${courseId}/visibility`, {
     method: 'PUT',
     body: JSON.stringify({ visibility }),
+  })
+}
+
+export function setCoursePracticalRequirement(
+  courseId: string, requiresPractical: boolean,
+): Promise<{ id: string; requiresPractical: boolean }> {
+  return apiFetch(`/api/learning/admin/courses/${courseId}/practical-requirement`, {
+    method: 'PUT',
+    body: JSON.stringify({ requiresPractical }),
   })
 }
 

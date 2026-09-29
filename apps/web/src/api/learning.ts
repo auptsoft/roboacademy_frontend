@@ -129,6 +129,7 @@ export interface EnrolledPathSummary {
   completedCourses: number
   progressPercent: number
   enrolledAt: string
+  steps: PathStepProgress[]
 }
 
 // enrolments/me only returns pathId/status — join against getLearningPath + progress/me per
@@ -155,6 +156,7 @@ export async function getMyEnrolledPaths(): Promise<EnrolledPathSummary[]> {
         completedCourses,
         progressPercent: courseCount > 0 ? Math.round((completedCourses / courseCount) * 100) : 0,
         enrolledAt: enrolment.enrolledAt,
+        steps: [...progress.steps].sort((a, b) => a.order - b.order),
       }
     }),
   )

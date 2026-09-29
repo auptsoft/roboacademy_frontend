@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
-import { User, BarChart3, Settings, LogOut, ChevronDown } from 'lucide-vue-next'
+import { User, BarChart3, Award, Settings, LogOut, ChevronDown } from 'lucide-vue-next'
 import {
   DropdownMenuRoot,
   DropdownMenuTrigger,
@@ -57,6 +57,13 @@ function handleLogout() {
         >
           <BarChart3 :size="16" />
           Progress
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          class="flex items-center gap-2.5 px-2.5 py-2.5 rounded-(--ra-md) cursor-pointer text-sm font-medium text-(--fg-2) outline-none transition-colors duration-(--dur-1) ease-(--ease-out) data-[highlighted]:bg-(--bg-3) data-[highlighted]:text-(--fg-1)"
+          @select="router.push('/app/certificates')"
+        >
+          <Award :size="16" />
+          Certificates
         </DropdownMenuItem>
         <DropdownMenuItem
           class="flex items-center gap-2.5 px-2.5 py-2.5 rounded-(--ra-md) cursor-pointer text-sm font-medium text-(--fg-2) outline-none transition-colors duration-(--dur-1) ease-(--ease-out) data-[highlighted]:bg-(--bg-3) data-[highlighted]:text-(--fg-1)"

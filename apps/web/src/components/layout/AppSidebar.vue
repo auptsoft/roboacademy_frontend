@@ -19,7 +19,7 @@ function isActive(path: string) {
 
 <template>
   <aside class="flex flex-col w-(--sidebar-w) shrink-0 h-full bg-(--surface) border-r border-(--line-1) px-6 pt-8 pb-6 overflow-y-auto max-md:hidden">
-    <button class="flex items-center gap-2.5 bg-transparent border-0 p-0 cursor-pointer text-left" @click="router.push('/app')">
+    <button class="flex justify-center items-center gap-2.5 bg-transparent border-0 p-0 cursor-pointer text-left" @click="router.push('/app')">
       <img v-if="props.branding.logoUrl" :src="props.branding.logoUrl" :alt="`${props.branding.name} logo`" class="h-12 max-w-full object-contain" />
       <template v-else>
         <span class="w-9 h-9 rounded-(--ra-md) bg-(--brand-navy) flex items-center justify-center text-(--brand-navy-fg) shrink-0">

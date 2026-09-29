@@ -1,4 +1,4 @@
-import { apiFetch } from '@/api/client'
+import { apiFetch, apiFetchPaged, type PageMeta } from '@/api/client'
 
 export interface AssessmentSummary {
   id: string
@@ -63,6 +63,29 @@ export interface AttemptSummary {
 
 export function listMyAttempts(assessmentId: string): Promise<AttemptSummary[]> {
   return apiFetch<AttemptSummary[]>(`/api/assessment/assessments/${assessmentId}/attempts/mine`)
+}
+
+export interface MyAttemptItem {
+  id: string
+  assessmentId: string
+  assessmentTitle: string
+  assessmentType: AssessmentSummary['type']
+  courseId: string
+  moduleId: string
+  status: AttemptStatus
+  startedAt: string
+  submittedAt: string | null
+  score: number | null
+  passed: boolean | null
+  gradedAt: string | null
+}
+
+// Every attempt the caller has made, across all assessments, newest first.
+export function getAllMyAttempts(params: { page?: number; pageSize?: number } = {}): Promise<{ data: MyAttemptItem[]; meta: PageMeta }> {
+  const query = new URLSearchParams()
+  query.set('page', String(params.page ?? 1))
+  query.set('pageSize', String(params.pageSize ?? 50))
+  return apiFetchPaged<MyAttemptItem>(`/api/assessment/attempts/mine?${query.toString()}`)
 }
 
 export interface StartAttemptResult {

@@ -13,6 +13,7 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/component
 import CourseGeneralCard, { type CourseGeneralFormState } from '@/components/CourseGeneralCard.vue'
 import CoursePublishCard from '@/components/CoursePublishCard.vue'
 import CourseVisibilityCard from '@/components/CourseVisibilityCard.vue'
+import CourseCertificationCard from '@/components/CourseCertificationCard.vue'
 import { hasPermission } from '@/store/auth'
 import CourseModuleHeader, { type CourseModuleEditForm } from '@/components/CourseModuleHeader.vue'
 import CourseItemRow from '@/components/CourseItemRow.vue'
@@ -40,6 +41,7 @@ import {
   getCourseIntroVideoUrl,
   copyCourseToTenants,
   setCourseVisibility,
+  setCoursePracticalRequirement,
   visibilityLabel,
   type CourseDetail,
   type CourseVisibility,
@@ -65,10 +67,12 @@ const courseId = computed(() => String(route.params.courseId))
 const canAuthor = hasPermission('learning:courses:author')
 const canManageVisibility = hasPermission('learning:courses:manage-visibility')
 const canManageEnrolments = hasPermission('learning:enrolments:manage')
+const canManageCertification = hasPermission('learning:courses:manage-certification-requirements')
 
 const sections = [
   ...(canAuthor ? [{ id: 'general', label: 'General' }, { id: 'modules', label: 'Modules, Lessons & Assessments' }] : []),
   ...(canManageVisibility ? [{ id: 'visibility', label: 'Visibility' }] : []),
+  ...(canManageCertification ? [{ id: 'certification', label: 'Certification' }] : []),
   ...(canAuthor ? [{ id: 'publish', label: 'Publish' }] : []),
 ]
 
@@ -308,6 +312,25 @@ onMounted(() => {
   loadCourse()
   if (canAuthor) loadQuestionBank()
 })
+
+// --- Certification requirement ---
+const savingPracticalRequirement = ref(false)
+
+async function savePracticalRequirement(requiresPractical: boolean) {
+  if (!course.value) return
+  savingPracticalRequirement.value = true
+  try {
+    const result = await setCoursePracticalRequirement(courseId.value, requiresPractical)
+    course.value.requiresPractical = result.requiresPractical
+    toast.success(result.requiresPractical
+      ? 'Certificates now require a passed practical.'
+      : 'Certificates no longer require a practical.')
+  } catch (error) {
+    toast.error(error instanceof ApiError ? error.message : 'Failed to update the certification requirement.')
+  } finally {
+    savingPracticalRequirement.value = false
+  }
+}
 
 // --- Visibility ---
 const savingVisibility = ref(false)
@@ -1081,6 +1104,13 @@ async function copyToTenants(targetTenantIds: string[]) {
             :state="course.state"
             :saving="savingVisibility"
             @save="saveVisibility"
+          />
+
+          <CourseCertificationCard
+            v-if="canManageCertification"
+            :requires-practical="course.requiresPractical"
+            :saving="savingPracticalRequirement"
+            @save="savePracticalRequirement"
           />
 
           <CoursePublishCard

@@ -208,7 +208,7 @@ const activity = computed<ActivityEntry[]>(() => {
       text: cert.kind === 'Path' ? pathTitleFor(cert.pathId!) : courseTitleFor(cert.courseId!),
       type: 'Certificate',
       status: 'Issued',
-      link: cert.kind === 'Path' ? `/app/explore/paths/${cert.pathId}` : `/app/courses/${cert.courseId}`,
+      link: '/app/certificates',
     })),
   ]
   return entries
