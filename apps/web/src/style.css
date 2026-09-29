@@ -1,11 +1,53 @@
 @import "@roboacademy/ui/style.css";
 @import "shadcn/tailwind.css";
 
+/* Learner-app palette. Kept web-only so the shared @roboacademy/ui scale — and therefore
+   apps/admin — is untouched. Tenant colours arrive as --tenant-* variables written by
+   applyTenantBranding() (branding.ts); every fallback below is the default look.
+     --brand-navy  ← tenant primary   (structure: surfaces, ribbons, table headers)
+     --brand-sand  ← tenant secondary (accent: card strips, active indicators)
+     --brand-blue  ← secondary ?? primary, set inline (CTA buttons) */
 :root {
-  /* Text color for content placed on top of --brand-blue (e.g. the auth page's submit
-     button); overridden per-tenant by applyTenantBranding() when a custom primaryColor
-     is light enough to need dark text instead. */
+  /* Text color for content placed on top of --brand-blue (CTA buttons); overridden
+     per-tenant when the CTA colour is light enough to need dark text instead. */
   --brand-blue-foreground: #ffffff;
+
+  --canvas:            var(--bg-0);
+  --surface:           var(--bg-1);
+  --surface-shadow:    none;
+  --brand-navy:        var(--tenant-primary, #1E3A5F);
+  --brand-navy-fg:     var(--tenant-primary-fg, #FFFFFF);
+  --brand-navy-muted:  color-mix(in srgb, var(--brand-navy-fg) 72%, transparent);
+  --brand-sand:        var(--tenant-secondary, #8C7558);
+  --brand-sand-fg:     var(--tenant-secondary-fg, #FFFFFF);
+  --sidebar-active-bg: var(--bg-3);
+  /* Dark mode keeps light headings regardless of tenant colour, for legibility. */
+  --heading:           var(--fg-1);
+  --link:              var(--heading);
+
+  /* CTA states derived from whatever --brand-blue resolves to (the shared tokens
+     hard-code blue shades, which would clash with a tenant CTA colour). */
+  --brand-blue-hover:  color-mix(in srgb, var(--brand-blue) 88%, #000);
+  --brand-blue-press:  color-mix(in srgb, var(--brand-blue) 78%, #000);
+  --brand-blue-soft:   color-mix(in srgb, var(--brand-blue) 14%, transparent);
+  --brand-blue-ring:   color-mix(in srgb, var(--brand-blue) 35%, transparent);
+}
+
+[data-theme="light"] {
+  --canvas:            #F1F2F4;
+  --surface:           #FFFFFF;
+  --surface-shadow:    0 1px 2px rgba(15, 23, 42, 0.04);
+  --brand-navy:        var(--tenant-primary, #1B2F4E);
+  --brand-sand:        var(--tenant-secondary, #B39B7C);
+  --sidebar-active-bg: color-mix(in srgb, var(--brand-navy) 9%, #FFFFFF);
+  /* --tenant-heading is only set when the primary is dark enough to read on white. */
+  --heading:           var(--tenant-heading, #1B2F4E);
+  --link:              var(--heading);
+
+  --brand-blue-hover:  color-mix(in srgb, var(--brand-blue) 88%, #000);
+  --brand-blue-press:  color-mix(in srgb, var(--brand-blue) 78%, #000);
+  --brand-blue-soft:   color-mix(in srgb, var(--brand-blue) 10%, transparent);
+  --brand-blue-ring:   color-mix(in srgb, var(--brand-blue) 35%, transparent);
 }
 
 .link-active {

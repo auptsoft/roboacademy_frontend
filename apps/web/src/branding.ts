@@ -1,3 +1,4 @@
+import type { InjectionKey, Ref } from 'vue'
 import { applyDocumentTitle, applyFavicon } from '@roboacademy/ui'
 import type { TenantBranding } from '@/api/tenancy'
 
@@ -13,22 +14,43 @@ function contrastingForeground(hex: string): string {
   return luminance > 0.6 ? '#0b0f19' : '#ffffff'
 }
 
-// Applies the tenant's brand color to the auth page's --brand-blue tokens. Falls back to the
-// CSS defaults (see style.css) when the tenant has no custom primaryColor set.
+function validHex(value: string | null): string | null {
+  return value && HEX_COLOR.test(value) ? value : null
+}
+
+// Writes the tenant's raw colours onto <html> as --tenant-* inputs; style.css derives the
+// per-theme palette from them (inline values would otherwise override both light and dark).
+//   primary   → structure: navy surfaces, ribbons, headings, links
+//   secondary → accent: CTA buttons (--brand-blue), card strips, active indicators
+// Missing colours leave the CSS defaults in place; with no secondary, CTAs use the primary.
 export function applyTenantBranding(branding: TenantBranding): void {
   applyDocumentTitle(branding.name)
   applyFavicon(branding.logoUrl)
 
-  if (!branding.primaryColor || !HEX_COLOR.test(branding.primaryColor)) {
-    return
+  const root = document.documentElement.style
+  const primary = validHex(branding.primaryColor)
+  const secondary = validHex(branding.secondaryColor)
+
+  if (primary) {
+    const primaryFg = contrastingForeground(primary)
+    root.setProperty('--tenant-primary', primary)
+    root.setProperty('--tenant-primary-fg', primaryFg)
+    // Only use the primary as heading/link text when it's dark enough to read on white.
+    if (primaryFg === '#ffffff') root.setProperty('--tenant-heading', primary)
   }
 
-  const root = document.documentElement.style
-  root.setProperty('--brand-blue', branding.primaryColor)
-  root.setProperty('--brand-blue-foreground', contrastingForeground(branding.primaryColor))
+  if (secondary) {
+    root.setProperty('--tenant-secondary', secondary)
+    root.setProperty('--tenant-secondary-fg', contrastingForeground(secondary))
+  }
 
-  const hover = branding.secondaryColor && HEX_COLOR.test(branding.secondaryColor)
-    ? branding.secondaryColor
-    : branding.primaryColor
-  root.setProperty('--brand-blue-hover', hover)
+  const cta = secondary ?? primary
+  if (cta) {
+    root.setProperty('--brand-blue', cta)
+    root.setProperty('--brand-blue-foreground', contrastingForeground(cta))
+  }
 }
+
+// Provided by app-layout once branding loads, so pages (e.g. the dashboard hero) can use it
+// without refetching.
+export const brandingKey: InjectionKey<Ref<TenantBranding>> = Symbol('tenant-branding')

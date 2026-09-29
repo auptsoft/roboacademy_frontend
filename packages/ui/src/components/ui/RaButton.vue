@@ -31,7 +31,7 @@ defineProps<{
 }
 .ra-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.ra-btn--primary { background: var(--brand-blue); color: #fff; }
+.ra-btn--primary { background: var(--brand-blue); color: var(--brand-blue-foreground, #fff); }
 .ra-btn--primary:hover:not(:disabled) { background: var(--brand-blue-hover); }
 .ra-btn--primary:active:not(:disabled) { background: var(--brand-blue-press); }
 

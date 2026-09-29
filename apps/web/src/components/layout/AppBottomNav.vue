@@ -16,12 +16,12 @@ function isActive(path: string) {
 </script>
 
 <template>
-  <nav class="hidden fixed inset-x-0 bottom-0 z-50 h-[60px] bg-(--bg-1) border-t border-(--line-1) max-md:flex">
+  <nav class="hidden fixed inset-x-0 bottom-0 z-50 h-[60px] bg-(--surface) border-t border-(--line-1) max-md:flex">
     <button
       v-for="tab in tabs"
       :key="tab.id"
       class="flex-1 flex flex-col items-center justify-center gap-[3px] bg-transparent border-0 cursor-pointer transition-colors duration-(--dur-1) ease-(--ease-out)"
-      :class="isActive(tab.path) ? 'text-(--brand-blue)' : 'text-(--fg-4)'"
+      :class="isActive(tab.path) ? 'text-(--heading)' : 'text-(--fg-4)'"
       @click="router.push(tab.path)"
     >
       <component :is="tab.icon" :size="18" />

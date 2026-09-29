@@ -71,7 +71,7 @@ const inputClass = 'w-full rounded-(--ra-md) border border-(--line-2) bg-(--bg-1
 <template>
   <div class="flex flex-col gap-7 px-8 pt-8 pb-12 max-w-(--content-max) mx-auto max-sm:gap-5 max-sm:px-4 max-sm:pt-5 max-sm:pb-8">
     <div>
-      <h1 class="m-0 text-[32px] font-bold text-(--fg-1) tracking-[-0.01em] max-sm:text-2xl">Profile</h1>
+      <h1 class="m-0 text-[28px] font-semibold text-(--heading) tracking-[-0.01em] max-sm:text-2xl">Profile</h1>
       <p class="mt-2 mb-0 text-sm text-(--fg-3)">Manage your account.</p>
     </div>
 

@@ -299,6 +299,8 @@ export interface EnrolledCourseSummary {
   title: string
   description: string | null
   thumbnailUrl: string | null
+  category: string | null
+  level: CourseDetail['level']
   progressPercent: number
   completedLessons: number
   totalLessons: number
@@ -331,6 +333,8 @@ export async function getMyEnrolledCourses(): Promise<EnrolledCourseSummary[]> {
         title: course.title,
         description: course.description,
         thumbnailUrl: course.thumbnailUrl,
+        category: course.category,
+        level: course.level,
         progressPercent: combinedProgressPercent(resume),
         completedLessons: resume.completedLessons,
         totalLessons: resume.totalLessons,

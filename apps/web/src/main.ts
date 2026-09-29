@@ -4,7 +4,7 @@ import './style.css'
 import App from './App.vue'
 import router from './router'
 
-initTheme('system')
+initTheme('light')
 
 createApp(App)
 .use(router)

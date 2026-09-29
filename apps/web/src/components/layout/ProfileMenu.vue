@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
-import { User, BarChart3, Settings, LogOut } from 'lucide-vue-next'
+import { User, BarChart3, Settings, LogOut, ChevronDown } from 'lucide-vue-next'
 import {
   DropdownMenuRoot,
   DropdownMenuTrigger,
@@ -26,14 +26,12 @@ function handleLogout() {
 <template>
   <DropdownMenuRoot>
     <DropdownMenuTrigger
-      class="flex items-center gap-2.5 py-1 pr-1.5 pl-3 border-0 bg-transparent rounded-(--ra-pill) cursor-pointer outline-none transition-colors duration-(--dur-1) ease-(--ease-out) hover:bg-(--bg-3) data-[state=open]:bg-(--bg-3)"
+      class="flex items-center gap-2.5 py-1 pl-1 pr-2 border-0 bg-transparent rounded-(--ra-pill) cursor-pointer outline-none transition-colors duration-(--dur-1) ease-(--ease-out) hover:bg-(--bg-3) data-[state=open]:bg-(--bg-3)"
       aria-label="Account menu"
     >
-      <div class="text-right max-[480px]:hidden">
-        <span class="block text-[13px] font-semibold text-(--fg-1) whitespace-nowrap">{{ user?.fullName || '...' }}</span>
-        <span class="block text-xs text-(--fg-3) whitespace-nowrap">{{ user?.roles?.reduce ? user.roles.reduce((acc, role) => acc + ', ' + role, '').slice(2) : '...' }}</span>
-      </div>
-      <RaAvatar :name="user?.fullName || 'Alex Rivera'" :size="36" status="active" />
+      <RaAvatar :name="user?.fullName || 'Learner'" :size="30" />
+      <span class="text-sm font-medium text-(--heading) whitespace-nowrap max-[480px]:hidden">{{ user?.fullName || '...' }}</span>
+      <ChevronDown :size="16" class="text-(--fg-3)" />
     </DropdownMenuTrigger>
     <DropdownMenuPortal>
       <DropdownMenuContent
