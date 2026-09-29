@@ -161,10 +161,11 @@ async function toggleActive(tenant: Tenant) {
       <div
         class="grid grid-cols-[1.5fr_2fr_1.5fr_1fr_220px] border-b border-(--line-1) py-3.5 px-6 text-xs text-(--fg-3) max-md:hidden"
       >
-        <span>Id</span>
+        
         <span>Name</span>
         <span>Slug</span>
         <span>Status</span>
+        <span>Id</span>
         <!-- <span>Hosts</span> -->
         <span class="text-right">Actions</span>
       </div>
@@ -177,7 +178,7 @@ async function toggleActive(tenant: Tenant) {
         :key="tenant.tenantId"
         :class="[rowClass, i < tenants.length - 1 && 'border-b border-(--line-1)']"
       >
-        <div class="text-sm font-semibold text-(--fg-1)">{{ tenant.tenantId }}</div>
+        
         <div>
           <button
             class="cursor-pointer bg-transparent p-0 text-left text-sm font-semibold text-(--fg-1) underline-offset-2 hover:underline"
@@ -196,6 +197,7 @@ async function toggleActive(tenant: Tenant) {
         <!-- <div class="flex">
           <RaChip tone="neutral">{{ tenant.hosts.length }} host{{ tenant.hosts.length === 1 ? '' : 's' }}</RaChip>
         </div> -->
+        <div class="text-sm font-semibold text-(--fg-1)">{{ tenant.tenantId }}</div>
         <div class="flex justify-end max-md:w-full max-md:justify-start">
           <DropdownMenu>
             <DropdownMenuTrigger

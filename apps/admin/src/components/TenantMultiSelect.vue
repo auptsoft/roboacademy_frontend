@@ -78,6 +78,7 @@ function removeTenant(tenantId: string) {
       <ComboboxAnchor class="flex h-9 items-center gap-1.5 rounded-(--ra-md) border border-(--line-2) bg-(--bg-3) px-2.5">
         <ComboboxInput
           :model-value="searchText"
+          :display-value="() => ''"
           :placeholder="modelValue.length >= max ? `Maximum ${max} tenants selected` : 'Search tenants…'"
           :disabled="modelValue.length >= max"
           class="w-full bg-transparent text-[13px] text-(--fg-2) outline-none placeholder:text-(--fg-4) disabled:cursor-not-allowed"
@@ -87,6 +88,8 @@ function removeTenant(tenantId: string) {
 
       <ComboboxPortal>
         <ComboboxContent
+          position="popper"
+          :side-offset="6"
           :class="
             cn(
               'z-50 w-64 rounded-none bg-popover p-1 text-sm text-popover-foreground shadow-md ring-1 ring-foreground/10 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',

@@ -74,6 +74,7 @@ function clear() {
     >
       <ComboboxInput
         :model-value="searchText"
+        :display-value="() => selectedTenant?.name ?? ''"
         :placeholder="loading ? 'Loading tenants…' : 'Search tenants…'"
         class="w-full bg-transparent text-[13px] text-(--fg-2) outline-none placeholder:text-(--fg-4)"
         @update:model-value="(value) => onSearchInput(value as string)"
@@ -90,6 +91,8 @@ function clear() {
 
     <ComboboxPortal>
       <ComboboxContent
+        position="popper"
+        :side-offset="6"
         :class="
           cn(
             'z-50 w-64 rounded-none bg-popover p-1 text-sm text-popover-foreground shadow-md ring-1 ring-foreground/10 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
