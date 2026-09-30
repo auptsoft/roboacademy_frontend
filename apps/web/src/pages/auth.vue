@@ -5,12 +5,11 @@ import { Cpu } from 'lucide-vue-next'
 import LoginView from '@/components/auth/login-view.vue'
 import RegisterView from '@/components/auth/register-view.vue'
 import ForgotPasswordView from '@/components/auth/forgot-password-view.vue'
-import ThemeToggle from '@/components/ThemeToggle.vue'
 import { getTenantId } from '@/api/client'
 import { setStoredTenantId } from '@/api/session'
 import { getTenantBranding, type TenantBranding } from '@/api/tenancy'
 import { applyTenantBranding } from '@/branding'
-import { RaAvatar, RaThemeToggle } from '@roboacademy/ui'
+import { RaThemeToggle } from '@roboacademy/ui'
 
 const route = useRoute()
 const router = useRouter()
