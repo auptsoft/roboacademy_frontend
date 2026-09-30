@@ -70,8 +70,8 @@ const inputClass = 'w-full rounded-(--ra-md) border border-(--line-2) bg-(--bg-1
 <template>
   <div>
     <template v-if="step === 'request'">
-      <h1 class="m-0 text-[28px] font-bold text-(--fg-1)">Forgot Password</h1>
-      <p class="mt-1.5 mb-0 text-sm text-(--fg-3)">Enter your email and we'll send you a code to reset your password</p>
+      <h1 class="m-0 text-[28px] font-bold text-(--fg-1) text-center">Forgot Password</h1>
+      <p class="mt-1.5 mb-0 text-sm text-(--fg-3) text-center">Enter your email and we'll send you a code to reset your password</p>
 
       <form class="mt-6 flex flex-col gap-3.5" @submit.prevent="submitRequest">
         <input v-model="email" type="email" placeholder="Email Address" aria-label="Email Address" required autocomplete="username" :class="inputClass">

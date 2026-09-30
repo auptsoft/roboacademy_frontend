@@ -80,8 +80,8 @@ const inputClass = 'w-full rounded-(--ra-md) border border-(--line-2) bg-(--bg-1
 <template>
   <div>
     <template v-if="step === 'details'">
-      <h1 class="m-0 text-[28px] font-bold text-(--fg-1)">Sign Up</h1>
-      <p class="mt-1.5 mb-0 text-sm text-(--fg-3)">Create your account</p>
+      <h1 class="m-0 text-[28px] font-bold text-(--fg-1) text-center">Sign Up</h1>
+      <p class="mt-1.5 mb-0 text-sm text-(--fg-3) text-center">Create your account</p>
 
       <form class="mt-6 flex flex-col gap-3.5" @submit.prevent="submitDetails">
         <div class="grid grid-cols-2 gap-3">

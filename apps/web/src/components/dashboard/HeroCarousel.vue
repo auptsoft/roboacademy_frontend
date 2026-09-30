@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { RaButton } from '@roboacademy/ui'
 import { Cpu } from 'lucide-vue-next'
 
@@ -17,21 +17,38 @@ const props = withDefaults(defineProps<{
   intervalMs?: number
 }>(), { intervalMs: 7000 })
 
-const index = ref(0)
-const current = computed(() => props.slides[index.value] ?? props.slides[0])
-
-watch(() => props.slides.length, (len) => {
-  if (index.value >= len) index.value = 0
-})
+// Track the current slide by id, not position: slides are built from data that loads
+// piecemeal, so one can be inserted ahead of the current one and shift its index.
+const currentId = ref<string | null>(null)
+const index = computed(() => Math.max(0, props.slides.findIndex(s => s.id === currentId.value)))
+const current = computed(() => props.slides[index.value])
 
 function go(i: number) {
   const len = props.slides.length
   if (!len) return
-  index.value = (i + len) % len
+  currentId.value = props.slides[(i + len) % len].id
+}
+
+// Manual navigation restarts the timer so the chosen slide gets a full interval.
+function select(i: number) {
+  go(i)
+  start()
 }
 
 let timer: ReturnType<typeof setInterval> | undefined
-const paused = ref(false)
+// Pause on hover, and on keyboard focus only - a mouse click on a dot focuses it too, and
+// would otherwise leave the carousel paused until focus moved elsewhere.
+const hovered = ref(false)
+const keyboardFocused = ref(false)
+const paused = computed(() => hovered.value || keyboardFocused.value)
+
+function onFocusIn(e: FocusEvent) {
+  keyboardFocused.value = (e.target as Element).matches(':focus-visible')
+}
+
+function onFocusOut(e: FocusEvent) {
+  if (!(e.currentTarget as Element).contains(e.relatedTarget as Node | null)) keyboardFocused.value = false
+}
 
 function start() {
   stop()
@@ -55,12 +72,12 @@ onUnmounted(stop)
     v-if="current"
     class="flex flex-col items-center gap-4"
     aria-roledescription="carousel"
-    @mouseenter="paused = true"
-    @mouseleave="paused = false"
-    @focusin="paused = true"
-    @focusout="paused = false"
-    @keydown.left="go(index - 1)"
-    @keydown.right="go(index + 1)"
+    @mouseenter="hovered = true"
+    @mouseleave="hovered = false"
+    @focusin="onFocusIn"
+    @focusout="onFocusOut"
+    @keydown.left="select(index - 1)"
+    @keydown.right="select(index + 1)"
   >
     <Transition name="hero-fade" mode="out-in">
       <div
@@ -99,7 +116,7 @@ onUnmounted(stop)
         :class="i === index ? 'bg-(--brand-navy)' : 'bg-(--line-3)'"
         :aria-label="`Go to slide ${i + 1}`"
         :aria-current="i === index ? 'true' : undefined"
-        @click="go(i)"
+        @click="select(i)"
       />
     </div>
   </section>

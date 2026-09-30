@@ -29,8 +29,8 @@ async function submit() {
 
 <template>
   <div>
-    <h1 class="m-0 text-[28px] font-bold text-(--fg-1)">Log In</h1>
-    <p class="mt-1.5 mb-0 text-sm text-(--fg-3)">Enter your account details</p>
+    <h1 class="m-0 text-[28px] font-bold text-(--fg-1) text-center">Log In</h1>
+    <p class="mt-1.5 mb-0 text-sm text-(--fg-3) text-center">Enter your account details</p>
 
     <form class="mt-6 flex flex-col gap-3.5" @submit.prevent="submit">
       <input
@@ -55,7 +55,7 @@ async function submit() {
         >
         <button
           type="button"
-          class="absolute inset-y-0 right-0 flex w-11 items-center justify-center border-0 bg-transparent text-(--fg-4) hover:text-(--fg-2)"
+          class="cursor-pointer absolute inset-y-0 right-0 flex w-11 items-center justify-center border-0 bg-transparent text-(--fg-4) hover:text-(--fg-2)"
           :aria-label="showPassword ? 'Hide password' : 'Show password'"
           @click="showPassword = !showPassword"
         >
@@ -64,11 +64,11 @@ async function submit() {
         </button>
       </div>
 
-      <button type="button" class="self-end border-0 bg-transparent p-0 text-xs font-medium text-(--brand-blue) hover:text-(--brand-blue-hover)" @click="$emit('forgot-password')">Forgot Password?</button>
+      <button type="button" class="cursor-pointer self-end border-0 bg-transparent p-0 text-xs font-medium text-(--brand-blue) hover:text-(--brand-blue-hover)" @click="$emit('forgot-password')">Forgot Password?</button>
 
       <p v-if="errorMessage" class="m-0 text-[13px] text-(--danger)">{{ errorMessage }}</p>
 
-      <Button type="submit" class="mt-1.5 h-auto w-full rounded-(--ra-md) bg-(--brand-blue) py-3 text-sm font-semibold text-(--brand-blue-foreground) hover:bg-(--brand-blue-hover)" :disabled="loading">
+      <Button type="submit" class="cursor-pointer mt-1.5 h-auto w-full rounded-(--ra-md) bg-(--brand-blue) py-3 text-sm font-semibold text-(--brand-blue-foreground) hover:bg-(--brand-blue-hover)" :disabled="loading">
         {{ loading ? 'Logging in…' : 'Login' }}
       </Button>
     </form>

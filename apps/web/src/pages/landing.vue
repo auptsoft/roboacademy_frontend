@@ -1,24 +1,18 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useThemeSwitcher } from '@roboacademy/ui'
+import ThemeToggle from '@/components/ThemeToggle.vue'
 import {
-  Cpu, ArrowRight, PlayCircle, Sun, Moon,
+  Cpu, ArrowRight, PlayCircle,
   Home, BookOpen, BarChart3, Shield,
   Send, Lightbulb, Terminal,
 } from 'lucide-vue-next'
 
 const router = useRouter()
-const { mode, isDark } = useThemeSwitcher()
 
 onMounted(() => {
   document.documentElement.style.overflowX = 'hidden'
 })
-
-
-function toggleTheme() {
-  mode.value = isDark.value ? 'light' : 'dark'
-}
 
 const categories = [
   {
@@ -103,13 +97,7 @@ const logClass: Record<string, string> = {
           <a href="#pricing" class="text-[13px] text-(--fg-3) transition-colors duration-(--dur-1) ease-(--ease-out) hover:text-(--fg-1) no-underline">Pricing</a>
         </nav>
         <div class="ml-auto flex items-center gap-[clamp(8px,1.5vw,14px)]">
-          <button
-            class="w-9 h-9 rounded-full bg-transparent border border-(--line-2) text-(--fg-3) cursor-pointer inline-grid place-items-center relative transition-colors duration-(--dur-1) ease-(--ease-out) p-0 hover:text-(--fg-1) hover:bg-(--bg-3) hover:border-(--line-3)"
-            type="button" @click="toggleTheme" aria-label="Toggle theme"
-          >
-            <Sun :size="16" :class="['absolute opacity-0 rotate-90 [transition:opacity_var(--dur-2)_var(--ease-out),transform_var(--dur-3)_var(--ease-out)]', isDark && 'opacity-100 rotate-0']" />
-            <Moon :size="16" :class="['absolute opacity-0 rotate-90 [transition:opacity_var(--dur-2)_var(--ease-out),transform_var(--dur-3)_var(--ease-out)]', !isDark && 'opacity-100 rotate-0']" />
-          </button>
+          <ThemeToggle />
           <button
             class="inline-flex items-center gap-2 rounded-(--radius-md) font-sans text-sm font-semibold cursor-pointer border-0 bg-transparent text-(--fg-2) px-1 h-auto transition-colors duration-(--dur-1) ease-(--ease-out) hover:text-(--fg-1) no-underline max-[480px]:hidden"
             @click="router.push('/auth')"
