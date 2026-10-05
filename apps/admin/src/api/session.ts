@@ -117,7 +117,10 @@ export function endImpersonation(): void {
   if (homeAccessToken) localStorage.setItem(ACCESS_TOKEN_KEY, homeAccessToken)
   if (homeRefreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, homeRefreshToken)
   if (homeExpiresAt) localStorage.setItem(EXPIRES_AT_KEY, homeExpiresAt)
+  // No stashed tenant id means the home session relied on the PLATFORM_TENANT_ID fallback (the
+  // usual platform-admin login), so drop the impersonated id rather than leaving it in place.
   if (homeTenantId) localStorage.setItem(TENANT_ID_KEY, homeTenantId)
+  else localStorage.removeItem(TENANT_ID_KEY)
 
   localStorage.removeItem(HOME_ACCESS_TOKEN_KEY)
   localStorage.removeItem(HOME_REFRESH_TOKEN_KEY)
