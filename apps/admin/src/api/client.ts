@@ -1,11 +1,13 @@
 import { clearSession, getAccessToken, getStoredTenantId } from '@/api/session'
 import { getEnv } from '@/lib/runtime-env'
+import { describePlanError, isPlanErrorDetails, type PlanErrorDetails } from '@/lib/plan-errors'
 
 const API_BASE_URL = getEnv('VITE_API_BASE_URL')
 const PLATFORM_TENANT_ID = getEnv('VITE_PLATFORM_TENANT_ID')
 
-// The tenant to address is captured from ?tenantId= on the login page (see login.vue) and
-// persisted to localStorage, so it sticks across navigation regardless of the current URL.
+// The tenant to address is captured from ?t=<slug> or ?tenantId= on any URL (see
+// lib/tenant-from-url.ts, run by the router) and persisted to localStorage, so it sticks across
+// navigation regardless of the current URL.
 export function getTenantId(): string {
   return getStoredTenantId() || PLATFORM_TENANT_ID
 }
@@ -13,12 +15,25 @@ export function getTenantId(): string {
 export class ApiError extends Error {
   status: number
   fieldErrors?: Record<string, string[]>
+  // Set for plan-entitlement failures (limit_exceeded / feature_unavailable); message is then
+  // already the user-facing description, so callers rarely need to inspect this.
+  planError?: PlanErrorDetails
 
-  constructor(status: number, message: string, fieldErrors?: Record<string, string[]>) {
-    super(message)
+  constructor(
+    status: number,
+    message: string,
+    fieldErrors?: Record<string, string[]>,
+    planError?: PlanErrorDetails,
+  ) {
+    super(planError ? describePlanError(planError) : message)
     this.name = 'ApiError'
     this.status = status
     this.fieldErrors = fieldErrors
+    this.planError = planError
+  }
+
+  get code(): string | undefined {
+    return this.planError?.code
   }
 }
 
@@ -43,6 +58,19 @@ async function parseEnvelope(response: Response): Promise<ApiEnvelope<unknown> |
     return JSON.parse(text) as ApiEnvelope<unknown>
   } catch {
     return null
+  }
+}
+
+// The tenant's subscription lapsed past its grace period (see the backend's
+// SubscriptionAccessMiddleware). Only school admins can still sign in to a locked tenant, and
+// the expired page is all they can use, so send them there from wherever the refusal surfaced.
+function isSubscriptionExpired(data: unknown): boolean {
+  return !!data && typeof data === 'object' && (data as { code?: unknown }).code === 'subscription_expired'
+}
+
+function redirectToSubscriptionExpired(): void {
+  if (window.location.pathname !== '/subscription-expired') {
+    window.location.assign('/subscription-expired')
   }
 }
 
@@ -80,7 +108,11 @@ async function apiFetchEnvelope<T>(path: string, init: RequestInit = {}): Promis
       envelope?.data && typeof envelope.data === 'object' && 'errors' in envelope.data
         ? (envelope.data as { errors?: Record<string, string[]> }).errors
         : undefined
-    throw new ApiError(response.status, message, fieldErrors)
+    const planError = isPlanErrorDetails(envelope?.data) ? envelope.data : undefined
+    if (response.status === 403 && isSubscriptionExpired(envelope?.data)) {
+      redirectToSubscriptionExpired()
+    }
+    throw new ApiError(response.status, message, fieldErrors, planError)
   }
 
   return (envelope as ApiEnvelope<T>) ?? { isSuccessful: true, message: '', data: null }

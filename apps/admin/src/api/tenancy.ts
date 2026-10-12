@@ -1,9 +1,20 @@
 import { apiFetch, apiFetchPaged, type PageMeta } from '@/api/client'
+import { getEnv } from '@/lib/runtime-env'
 import { appendAuditLogFilterParams, type AuditLogFilters } from '@/api/identity'
+import type { SubscriptionState } from '@/api/plans'
 
 export interface HostInfo {
   host: string
   isVerified: boolean
+}
+
+export interface TenantPlanSummary {
+  planId: string
+  planName: string
+  planCode: string
+  state: SubscriptionState
+  endsAt: string | null
+  lockedAt: string | null
 }
 
 export interface Tenant {
@@ -16,6 +27,7 @@ export interface Tenant {
   createdAt: string
   updatedAt: string
   deletedAt: string | null
+  plan?: TenantPlanSummary | null
 }
 
 interface TenantMutationResponse {
@@ -39,10 +51,17 @@ export interface TenantBrandingFields {
 
 export interface TenantBranding extends TenantBrandingFields {
   name: string
+  allowRegistration?: boolean
+  features?: Record<string, boolean>
 }
 
-export function listTenants(page = 1, pageSize = 20): Promise<{ items: Tenant[]; meta: PageMeta }> {
+export function listTenants(
+  page = 1,
+  pageSize = 20,
+  state?: SubscriptionState | null,
+): Promise<{ items: Tenant[]; meta: PageMeta }> {
   const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
+  if (state) params.set('state', state)
   return apiFetchPaged<Tenant>(`/api/admin/tenancy/tenants?${params}`)
 }
 
@@ -162,4 +181,19 @@ export function getTenantAuditLog(
   const params = new URLSearchParams({ tenantId, page: String(page), pageSize: String(pageSize) })
   appendAuditLogFilterParams(params, filters)
   return apiFetchPaged<AuditLogItem>(`/api/admin/tenancy/audit?${params.toString()}`)
+}
+
+export interface ResolvedTenant {
+  tenantId: string
+  name: string
+  slug: string
+}
+
+// Looks a tenant up by its slug (the ?t=<slug> link). The lookup isn't scoped to a tenant, but
+// every /api request must resolve to one, so it is addressed as the platform tenant - not the
+// stored one, which may be stale or belong to the tenant being switched away from.
+export function resolveTenantSlug(slug: string): Promise<ResolvedTenant> {
+  return apiFetch<ResolvedTenant>(`/api/tenancy/resolve/${encodeURIComponent(slug)}`, {
+    headers: { 'X-Tenant-Id': getEnv('VITE_PLATFORM_TENANT_ID') },
+  })
 }

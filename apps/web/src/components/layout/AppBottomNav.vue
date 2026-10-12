@@ -1,11 +1,14 @@
 <script setup lang="ts">
+import { computed, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { mainNav } from './nav-items'
+import { navFor } from './nav-items'
+import { brandingKey } from '@/branding'
 
 const route = useRoute()
 const router = useRouter()
 
-const tabs = mainNav.filter(item => item.mobile !== false)
+const branding = inject(brandingKey, null)
+const tabs = computed(() => navFor(branding?.value).filter(item => item.mobile !== false))
 
 function isActive(path: string) {
   if (path === '/app') return route.path === '/app'

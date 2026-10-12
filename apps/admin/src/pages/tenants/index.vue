@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import Input from '@/components/ui/input.vue'
 import Label from '@/components/ui/label.vue'
 import Pagination from '@/components/Pagination.vue'
+import SubscriptionStateBadge from '@/components/SubscriptionStateBadge.vue'
 import {
   Dialog,
   DialogContent,
@@ -26,6 +27,7 @@ import {
 import { ApiError } from '@/api/client'
 import { usePagedList } from '@/composables/usePagedList'
 import { listTenants, createTenant, deactivateTenant, reactivateTenant, type Tenant } from '@/api/tenancy'
+import type { SubscriptionState } from '@/api/plans'
 import { enterTenant, hasPermission, isImpersonating } from '@/store/auth'
 import { getEnv } from '@/lib/runtime-env'
 
@@ -52,6 +54,16 @@ async function submitEnterTenant(tenant: Tenant) {
 
 const PLATFORM_TENANT_ID = getEnv('VITE_PLATFORM_TENANT_ID')
 
+// "Who needs attention" - narrows the list to one subscription state.
+const stateFilter = ref<SubscriptionState | ''>('')
+const stateOptions: { value: SubscriptionState | ''; label: string }[] = [
+  { value: '', label: 'All subscriptions' },
+  { value: 'Expiring', label: 'Expiring soon' },
+  { value: 'Grace', label: 'In grace period' },
+  { value: 'Locked', label: 'Locked' },
+  { value: 'Active', label: 'Active' },
+]
+
 const {
   items: tenants,
   loading,
@@ -62,10 +74,13 @@ const {
   load,
   goToPage,
   setPageSize,
-} = usePagedList(listTenants, { initialPageSize: 20, errorMessage: 'Failed to load tenants.' })
+} = usePagedList(
+  (pageNumber, size) => listTenants(pageNumber, size, stateFilter.value || null),
+  { initialPageSize: 20, errorMessage: 'Failed to load tenants.' },
+)
 
 const rowClass =
-  'grid gap-2 grid-cols-[1.5fr_2fr_1.5fr_1fr_220px] items-center py-3.5 px-6 transition-colors hover:bg-(--bg-3) max-md:flex max-md:flex-wrap max-md:gap-x-4 max-md:gap-y-2 max-md:p-4'
+  'grid gap-2 grid-cols-[1.5fr_1.2fr_1fr_1.8fr_1.5fr_80px] items-center py-3.5 px-6 transition-colors hover:bg-(--bg-3) max-md:flex max-md:flex-wrap max-md:gap-x-4 max-md:gap-y-2 max-md:p-4'
 
 onMounted(load)
 
@@ -156,22 +171,33 @@ async function toggleActive(tenant: Tenant) {
     <RaCard :padding="0" class="overflow-hidden">
       <div class="flex items-center justify-between border-b border-(--line-1) py-5 px-6">
         <h3 class="m-0 text-lg font-bold text-(--fg-1)">Tenants</h3>
+        <select
+          v-model="stateFilter"
+          aria-label="Filter by subscription state"
+          class="h-9 rounded-(--ra-md) border border-(--line-2) bg-(--bg-3) px-2.5 text-sm text-(--fg-2) outline-none"
+          @change="goToPage(1)"
+        >
+          <option v-for="option in stateOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+        </select>
       </div>
 
       <div
-        class="grid grid-cols-[1.5fr_2fr_1.5fr_1fr_220px] border-b border-(--line-1) py-3.5 px-6 text-xs text-(--fg-3) max-md:hidden"
+        class="grid grid-cols-[1.5fr_1.2fr_1fr_1.8fr_1.5fr_80px] border-b border-(--line-1) py-3.5 px-6 text-xs text-(--fg-3) max-md:hidden"
       >
         
         <span>Name</span>
         <span>Slug</span>
         <span>Status</span>
+        <span>Plan</span>
         <span>Id</span>
         <!-- <span>Hosts</span> -->
         <span class="text-right">Actions</span>
       </div>
 
       <p v-if="loading" class="p-6 text-center text-[13px] text-(--fg-3)">Loading tenants…</p>
-      <p v-else-if="tenants.length === 0" class="p-6 text-center text-[13px] text-(--fg-3)">No tenants yet — create one to get started.</p>
+      <p v-else-if="tenants.length === 0" class="p-6 text-center text-[13px] text-(--fg-3)">
+        {{ stateFilter ? 'No tenants in this state.' : 'No tenants yet — create one to get started.' }}
+      </p>
 
       <div
         v-for="(tenant, i) in tenants"
@@ -194,10 +220,22 @@ async function toggleActive(tenant: Tenant) {
             :label="tenant.isActive ? 'Active' : 'Inactive'"
           />
         </div>
+        <div class="flex flex-wrap items-center gap-1.5">
+          <template v-if="tenant.plan && tenant.tenantId !== PLATFORM_TENANT_ID">
+            <span class="text-[13px] text-(--fg-2)">{{ tenant.plan.planName }}</span>
+            <SubscriptionStateBadge
+              v-if="tenant.plan.state !== 'Active'"
+              :state="tenant.plan.state"
+              :ends-at="tenant.plan.endsAt"
+              :locked-at="tenant.plan.lockedAt"
+            />
+          </template>
+          <span v-else class="text-[13px] text-(--fg-4)">—</span>
+        </div>
         <!-- <div class="flex">
           <RaChip tone="neutral">{{ tenant.hosts.length }} host{{ tenant.hosts.length === 1 ? '' : 's' }}</RaChip>
         </div> -->
-        <div class="text-sm font-semibold text-(--fg-1)">{{ tenant.tenantId }}</div>
+        <div class="truncate font-mono text-[12px] text-(--fg-3)" :title="tenant.tenantId">{{ tenant.tenantId }}</div>
         <div class="flex justify-end max-md:w-full max-md:justify-start">
           <DropdownMenu>
             <DropdownMenuTrigger

@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Cpu, HelpCircle } from 'lucide-vue-next'
-import { mainNav } from './nav-items'
+import { navFor } from './nav-items'
 import type { TenantBranding } from '@/api/tenancy'
 
 const route = useRoute()
@@ -10,6 +11,8 @@ const router = useRouter()
 const props = defineProps<{
   branding: TenantBranding
 }>()
+
+const items = computed(() => navFor(props.branding))
 
 function isActive(path: string) {
   if (path === '/app') return route.path === '/app'
@@ -31,7 +34,7 @@ function isActive(path: string) {
 
     <nav class="flex flex-col gap-2 mt-12">
       <button
-        v-for="item in mainNav"
+        v-for="item in items"
         :key="item.id"
         class="flex items-center gap-3 px-4 py-3 rounded-(--ra-md) cursor-pointer text-[15px] bg-transparent border-0 text-left transition-colors duration-(--dur-1) ease-(--ease-out) hover:bg-(--sidebar-active-bg) hover:text-(--heading)"
         :class="isActive(item.path) ? 'bg-(--sidebar-active-bg)! text-(--heading) font-semibold' : 'text-(--fg-2) font-medium'"

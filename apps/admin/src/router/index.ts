@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { isAuthenticated } from '@/store/auth'
+import { captureTenantFromQuery } from '@/lib/tenant-from-url'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -7,6 +8,10 @@ const router = createRouter({
     {
       path: '/login',
       component: () => import('@/pages/login.vue'),
+    },
+    {
+      path: '/subscription-expired',
+      component: () => import('@/pages/subscription-expired.vue'),
     },
     {
       path: '/',
@@ -24,6 +29,14 @@ const router = createRouter({
         {
           path: 'tenants/:tenantId',
           component: () => import('@/pages/tenants/setup.vue'),
+        },
+        {
+          path: 'plans',
+          component: () => import('@/pages/plans/index.vue'),
+        },
+        {
+          path: 'plans/:planId',
+          component: () => import('@/pages/plans/detail.vue'),
         },
         {
           path: 'users',
@@ -118,7 +131,10 @@ const router = createRouter({
   ],
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
+  // First, before the redirects below drop the query (e.g. /?t=<slug> -> /login).
+  if (to.query.t || to.query.tenantId) await captureTenantFromQuery(to.query)
+
   if (to.path !== '/login' && !isAuthenticated()) {
     return '/login'
   }

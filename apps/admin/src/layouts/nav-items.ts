@@ -1,7 +1,7 @@
 import {
   LayoutGrid, Users, Building2, Settings2, GraduationCap, ScrollText,
   BookOpen, Route, Video, ClipboardList, HelpCircle, FileQuestion, Bot, BadgeCheck, ClipboardCheck,
-  UserCheck, CalendarDays, CalendarRange, Megaphone,
+  UserCheck, CalendarDays, CalendarRange, Megaphone, Layers,
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
 import { getActiveTenantId } from '@/store/auth'
@@ -22,6 +22,9 @@ export interface AdminNavLeaf {
   // Hides this entry while viewing another tenant via enterTenant - for platform-wide screens
   // (e.g. the full Tenants list) that don't make sense to reach mid-impersonation.
   hiddenWhileImpersonating?: boolean
+  // A plan feature key (see the backend's PlanFeatureKeys). Hidden when the active tenant's plan
+  // doesn't include it - the API rejects those calls anyway.
+  feature?: string
 }
 
 export interface AdminNavGroup {
@@ -59,8 +62,8 @@ export const adminNav: AdminNavEntry[] = [
     icon: BookOpen,
     items: [
       { id: 'courses', label: 'Courses', icon: BookOpen, path: '/courses', permission: ['learning:courses:author', 'learning:courses:manage-visibility'] },
-      { id: 'paths', label: 'Learning Paths', icon: Route, path: '/paths', permission: 'learning:courses:author' },
-      { id: 'live-classes', label: 'Live Classes', icon: Video, path: '/live-classes', permission: 'learning:courses:author' },
+      { id: 'paths', label: 'Learning Paths', icon: Route, path: '/paths', permission: 'learning:courses:author', feature: 'learning_paths' },
+      { id: 'live-classes', label: 'Live Classes', icon: Video, path: '/live-classes', permission: 'learning:courses:author', feature: 'live_classes' },
       { id: 'enrollments', label: 'Enrollments', icon: UserCheck, path: '/enrollments', permission: 'learning:enrolments:manage' },
     ],
   },
@@ -79,13 +82,14 @@ export const adminNav: AdminNavEntry[] = [
     label: 'Robotics Lab',
     icon: Bot,
     items: [
-      { id: 'sessions', label: 'Sessions', icon: Bot, path: '/roboticslab/sessions', permission: 'roboticslab:robots:manage' },
+      { id: 'sessions', label: 'Sessions', icon: Bot, path: '/roboticslab/sessions', permission: 'roboticslab:robots:manage', feature: 'robotics_lab' },
     ],
   },
-  { id: 'events', label: 'Events', icon: CalendarDays, path: '/events', permission: 'scheduling:events:manage' },
+  { id: 'events', label: 'Events', icon: CalendarDays, path: '/events', permission: 'scheduling:events:manage', feature: 'events' },
   { id: 'calendar', label: 'Calendar', icon: CalendarRange, path: '/calendar', permission: 'scheduling:events:manage' },
-  { id: 'announcements', label: 'Announcements', icon: Megaphone, path: '/announcements', permission: 'notifications:announcements:manage' },
-  { id: 'certificates', label: 'Certificates', icon: BadgeCheck, path: '/certificates', permission: 'certification:certificates:issue' },
+  { id: 'announcements', label: 'Announcements', icon: Megaphone, path: '/announcements', permission: 'notifications:announcements:manage', feature: 'announcements' },
+  { id: 'certificates', label: 'Certificates', icon: BadgeCheck, path: '/certificates', permission: 'certification:certificates:issue', feature: 'certificates' },
   { id: 'tenants', label: 'Tenants', icon: Building2, path: '/tenants', permission: 'tenancy:manage', hiddenWhileImpersonating: true },
+  { id: 'plans', label: 'Plans', icon: Layers, path: '/plans', permission: 'tenancy:plans:manage', hiddenWhileImpersonating: true },
   { id: 'audit', label: 'Audit Log', icon: ScrollText, path: '/audit', permission: 'identity:audit:view' },
 ]

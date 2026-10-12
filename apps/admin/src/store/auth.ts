@@ -28,7 +28,7 @@ const state = reactive<{
 
 // Nav items (e.g. "School Setup") that link into /tenants/:tenantId need to know which tenant is
 // currently active and re-resolve when it changes - call this after anything that changes the
-// stored tenant id outside of enterTenant/exitTenant (e.g. the ?tenantId= login flow).
+// stored tenant id outside of enterTenant/exitTenant (e.g. the ?t= / ?tenantId= link flow).
 export function syncActiveTenantId(): void {
   state.activeTenantId = getTenantId()
 }
@@ -77,6 +77,8 @@ export function logout(): void {
   clearSession()
   clearQueryCache()
   state.user = null
+  state.impersonation = null
+  state.activeTenantId = getTenantId()
 }
 
 export function isAuthenticated(): boolean {

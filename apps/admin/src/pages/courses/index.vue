@@ -32,8 +32,11 @@ import {
   listCourseCatalog, createCourse, copyCourseToTenants, visibilityLabel, COURSE_VISIBILITIES,
   type CourseCatalogItem, type CourseState, type CourseVisibility,
 } from '@/api/learning'
+import PlanLimitBanner from '@/components/PlanLimitBanner.vue'
+import { useTenantUsage } from '@/composables/useTenantUsage'
 
 const router = useRouter()
+const tenantUsage = useTenantUsage()
 const canCopyCrossTenant = useCanCopyCrossTenant()
 // School admins reach this page to manage visibility only - authoring stays with authors.
 const canAuthor = hasPermission('learning:courses:author')
@@ -101,6 +104,7 @@ async function submitCreate() {
       description: createForm.description || undefined,
     })
     toast.success('Course created.')
+    tenantUsage.load()
     createOpen.value = false
     router.push(`/courses/${created.id}`)
   } catch (error) {
@@ -153,11 +157,19 @@ function onImported(courseId: string) {
         <Button v-if="canCopyCrossTenant" variant="outline" @click="importDialogOpen = true">
           <Upload :size="14" /> Import from tenant…
         </Button>
-        <Button v-if="canAuthor" @click="openCreate">
-          <Plus :size="14" /> Add Course
-        </Button>
+        <span v-if="canAuthor" :title="tenantUsage.isBlocked('max_courses') ? 'Your plan\'s course limit is reached.' : undefined">
+          <Button :disabled="tenantUsage.isBlocked('max_courses')" @click="openCreate">
+            <Plus :size="14" /> Add Course
+          </Button>
+        </span>
       </div>
     </div>
+
+    <PlanLimitBanner
+      :limits="tenantUsage.attentionLimits.value"
+      :enforcement-mode="tenantUsage.usage.value?.enforcementMode"
+      :keys="['max_courses']"
+    />
 
     <RaCard :padding="0" class="overflow-hidden">
       <div class="flex flex-wrap items-center gap-3 border-b border-(--line-1) py-3 px-6">
