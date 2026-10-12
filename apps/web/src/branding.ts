@@ -54,3 +54,10 @@ export function applyTenantBranding(branding: TenantBranding): void {
 // Provided by app-layout once branding loads, so pages (e.g. the dashboard hero) can use it
 // without refetching.
 export const brandingKey: InjectionKey<Ref<TenantBranding>> = Symbol('tenant-branding')
+
+// Whether the tenant's plan includes a feature (see the backend's PlanFeatureKeys). Missing data
+// counts as included: the API enforces the real gate, so hiding navigation on a failed branding
+// read would only confuse.
+export function hasFeature(branding: TenantBranding | null | undefined, key: string): boolean {
+  return branding?.features?.[key] ?? true
+}

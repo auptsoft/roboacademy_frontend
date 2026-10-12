@@ -1,6 +1,7 @@
 
 import { isAuthenticated } from "@/store/auth"
 import {createRouter, createWebHistory} from "vue-router"
+import { captureTenantFromQuery } from "@/lib/tenant-from-url"
 
 const router = createRouter({
     history: createWebHistory(),
@@ -128,7 +129,10 @@ const router = createRouter({
     ]
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
+  // First, before the redirects below drop the query (e.g. /?t=<slug> -> /auth).
+  if (to.query.t || to.query.tenantId) await captureTenantFromQuery(to.query)
+
   if (to.meta.public) return
   if ((to.path !== '/auth' && to.path !== '/landing') && !isAuthenticated()) {
     return '/auth'

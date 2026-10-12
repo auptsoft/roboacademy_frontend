@@ -40,10 +40,20 @@ watch(open, (isOpen) => {
 
 onBeforeUnmount(close)
 
+// Most links are routes in this app; some messages (e.g. subscription reminders to school
+// admins) carry an absolute URL into another app.
+function openLink(link: string) {
+  if (/^https?:\/\//i.test(link)) {
+    window.location.assign(link)
+    return Promise.resolve()
+  }
+  return router.push(link)
+}
+
 async function openItem(item: NotificationItem) {
   close()
   void markRead(item).catch(() => {})
-  if (item.linkPath) await router.push(item.linkPath)
+  if (item.linkPath) await openLink(item.linkPath)
 }
 
 function viewAll() {

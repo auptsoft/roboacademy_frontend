@@ -11,6 +11,15 @@ const HEX_COLOR = /^#[0-9a-fA-F]{6}$/
 // Shield mark. Null until applyTenantBranding resolves, or if the tenant has no logo set.
 export const tenantLogoUrl = ref<string | null>(null)
 
+// Which plan features the active tenant has (from the public branding read). Null until
+// loaded or when branding failed - treated as "everything on", since the API enforces the
+// real gate and hiding navigation on a failed read would only confuse.
+export const tenantFeatures = ref<Record<string, boolean> | null>(null)
+
+export function hasTenantFeature(key: string): boolean {
+  return tenantFeatures.value?.[key] ?? true
+}
+
 // Picks black or white text for legibility on top of an arbitrary background color,
 // via the standard relative-luminance threshold (WCAG-style, simplified).
 function contrastingForeground(hex: string): string {
@@ -53,6 +62,7 @@ export async function applyTenantBranding(): Promise<void> {
       root.removeProperty('--secondary-foreground')
     }
     tenantLogoUrl.value = branding.logoUrl
+    tenantFeatures.value = branding.features ?? null
     applyDocumentTitle(branding.name, { suffix: TITLE_SUFFIX })
     applyFavicon(branding.logoUrl)
   } catch {
@@ -60,6 +70,7 @@ export async function applyTenantBranding(): Promise<void> {
     // rather than leaving a previously-active tenant's branding applied.
     resetBrandColors()
     tenantLogoUrl.value = null
+    tenantFeatures.value = null
     applyDocumentTitle(null, { suffix: TITLE_SUFFIX })
     applyFavicon(null)
   }

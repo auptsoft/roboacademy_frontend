@@ -1,32 +1,21 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ArrowRight, ShieldCheck } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import Input from '@/components/ui/input.vue'
 import Label from '@/components/ui/label.vue'
 import BrandMark from '@/components/BrandMark.vue'
-import { login, syncActiveTenantId } from '@/store/auth'
+import { login } from '@/store/auth'
 import { ApiError } from '@/api/client'
-import { setStoredTenantId } from '@/api/session'
-import { applyTenantBranding } from '@/branding'
+import { tenantLookupError } from '@/lib/tenant-from-url'
 
-const route = useRoute()
 const router = useRouter()
 
 const email = ref('')
 const password = ref('')
 const loading = ref(false)
 const errorMessage = ref('')
-
-onMounted(() => {
-  const tenantId = route.query.tenantId
-  if (typeof tenantId === 'string' && tenantId.trim()) {
-    setStoredTenantId(tenantId.trim())
-    syncActiveTenantId()
-    applyTenantBranding()
-  }
-})
 
 async function signIn() {
   errorMessage.value = ''
@@ -57,6 +46,7 @@ async function signIn() {
     <div class="w-[420px] max-w-full rounded-(--ra-lg) border border-(--line-1) bg-(--bg-2) p-7 max-[480px]:p-5">
       <h2 class="m-0 text-2xl font-bold text-(--fg-1)">Admin sign in</h2>
       <p class="mt-1.5 text-[13px] text-(--fg-3)">Enter your administrator credentials to continue.</p>
+      <p v-if="tenantLookupError" class="m-0 mt-4 text-[13px] text-(--danger)">{{ tenantLookupError }}</p>
       <form class="mt-5 flex flex-col gap-3.5" @submit.prevent="signIn">
         <div class="flex flex-col gap-1.5">
           <Label for="email">Email Address</Label>

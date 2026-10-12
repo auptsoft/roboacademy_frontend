@@ -7,6 +7,7 @@ import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { ApiError } from '@/api/client'
 import { getTenantCalendar, type CalendarItem, type CalendarItemKind } from '@/api/scheduling'
+import { hasTenantFeature } from '@/branding'
 
 // Tenant-wide month view: every event (drafts included), live class and timed lab session, so
 // clashes are visible before publishing. Clicking an entry opens its admin page.
@@ -88,7 +89,8 @@ function chipClass(item: CalendarItem) {
         <h1 class="m-0 text-[32px] font-bold tracking-[-0.01em] text-(--fg-1)">Calendar</h1>
         <p class="mt-1.5 text-sm text-(--fg-3)">Everything scheduled in this school. Dashed entries are unpublished drafts.</p>
       </div>
-      <Button @click="router.push('/events')">Manage events</Button>
+      <!-- The events screens are plan-gated; the calendar itself isn't (it also shows live classes). -->
+      <Button v-if="hasTenantFeature('events')" @click="router.push('/events')">Manage events</Button>
     </div>
 
     <RaCard class="flex flex-col gap-4">

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { inject } from 'vue'
 import { useRouter } from 'vue-router'
 import { User, BarChart3, Award, Settings, LogOut, ChevronDown } from 'lucide-vue-next'
 import {
@@ -11,11 +12,13 @@ import {
 } from 'reka-ui'
 import { RaAvatar, RaThemeToggle } from '@roboacademy/ui'
 import { getCurrentUser, logout } from '@/store/auth'
+import { brandingKey, hasFeature } from '@/branding'
 
 
 const router = useRouter()
 
 const user = getCurrentUser()
+const branding = inject(brandingKey, null)
 
 function handleLogout() {
   logout()
@@ -59,6 +62,7 @@ function handleLogout() {
           Progress
         </DropdownMenuItem>
         <DropdownMenuItem
+          v-if="hasFeature(branding, 'certificates')"
           class="flex items-center gap-2.5 px-2.5 py-2.5 rounded-(--ra-md) cursor-pointer text-sm font-medium text-(--fg-2) outline-none transition-colors duration-(--dur-1) ease-(--ease-out) data-[highlighted]:bg-(--bg-3) data-[highlighted]:text-(--fg-1)"
           @select="router.push('/app/certificates')"
         >

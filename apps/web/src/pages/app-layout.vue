@@ -4,14 +4,10 @@ import AppSidebar from '@/components/layout/AppSidebar.vue'
 import AppBottomNav from '@/components/layout/AppBottomNav.vue'
 import { onMounted, provide } from 'vue'
 
-import { useRoute } from 'vue-router'
 import { getTenantId } from '@/api/client'
-import { setStoredTenantId } from '@/api/session'
 import { ref } from 'vue'
 import { getTenantBranding, type TenantBranding } from '@/api/tenancy'
 import { applyTenantBranding, brandingKey } from '@/branding'
-
-const route = useRoute()
 
 const branding = ref<TenantBranding>({
       name: 'RoboAcademy',
@@ -27,11 +23,6 @@ const branding = ref<TenantBranding>({
 provide(brandingKey, branding)
 
 onMounted(async () => {
-  const tenantId = route.query.tenantId
-  if (typeof tenantId === 'string' && tenantId.trim()) {
-    setStoredTenantId(tenantId.trim())
-  }
-
   try {
     branding.value = await getTenantBranding(getTenantId())
   } catch {

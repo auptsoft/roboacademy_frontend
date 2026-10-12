@@ -16,8 +16,19 @@ import { hasPermission, getImpersonationTarget } from '@/store/auth'
 import { getTenantId } from '@/api/session'
 import { getEnv } from '@/lib/runtime-env'
 import { useCachedQuery } from '@/composables/useCachedQuery'
+import { useTenantUsage } from '@/composables/useTenantUsage'
+import PlanLimitBanner from '@/components/PlanLimitBanner.vue'
 
 const router = useRouter()
+
+// Plan usage for a school's own dashboard (empty for the platform tenant and for roles that
+// can't read it). Only capped limits get a tile.
+const tenantUsage = useTenantUsage()
+const cappedLimits = computed(() => (tenantUsage.usage.value?.limits ?? []).filter((l) => l.limit !== null))
+
+function seatsDelta(used: number, limit: number): string {
+  return used > limit ? `${(used - limit).toLocaleString()} over plan` : `${(limit - used).toLocaleString()} left`
+}
 
 const PLATFORM_TENANT_ID = getEnv('VITE_PLATFORM_TENANT_ID')
 
@@ -102,9 +113,23 @@ const activity = computed<IdentityAuditLogItem[]>(() => activityData.value?.item
       <p class="mt-1.5 text-sm text-(--fg-3)">{{ subtitle }}</p>
     </div>
 
+    <PlanLimitBanner
+      :limits="tenantUsage.attentionLimits.value"
+      :enforcement-mode="tenantUsage.usage.value?.enforcementMode"
+    />
+
     <div class="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-4">
       <RaKpi v-if="isPlatformWide" label="Total Tenants" :value="String(totalTenants)" class="ring-1 ring-inset ring-(--brand-blue-ring)" />
       <RaKpi label="Total Users" :value="String(totalUsers)" class="ring-1 ring-inset ring-(--brand-blue-ring)" />
+      <RaKpi
+        v-for="limit in cappedLimits"
+        :key="limit.key"
+        :label="`${limit.label} (plan)`"
+        :value="`${limit.used.toLocaleString()} / ${limit.limit!.toLocaleString()}`"
+        :delta="seatsDelta(limit.used, limit.limit!)"
+        :delta-tone="limit.atLimit || limit.overLimit ? 'muted' : 'success'"
+        class="ring-1 ring-inset ring-(--brand-blue-ring)"
+      />
       <RaKpi label="Courses" :value="totalCourses === null ? '—' : String(totalCourses)" class="ring-1 ring-inset ring-(--brand-blue-ring)" />
       <RaKpi label="Live Classes" :value="totalLiveClasses === null ? '—' : String(totalLiveClasses)" class="ring-1 ring-inset ring-(--brand-blue-ring)" />
       <RaKpi v-if="hasPermission('assessment:assessments:author')" label="Pending Grading" :value="totalPendingGrading === null ? '—' : String(totalPendingGrading)" class="ring-1 ring-inset ring-(--brand-blue-ring)" />

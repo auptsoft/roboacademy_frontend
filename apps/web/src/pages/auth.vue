@@ -1,18 +1,22 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Cpu } from 'lucide-vue-next'
 import LoginView from '@/components/auth/login-view.vue'
 import RegisterView from '@/components/auth/register-view.vue'
 import ForgotPasswordView from '@/components/auth/forgot-password-view.vue'
 import { getTenantId } from '@/api/client'
-import { setStoredTenantId } from '@/api/session'
 import { getTenantBranding, type TenantBranding } from '@/api/tenancy'
 import { applyTenantBranding } from '@/branding'
+import { tenantLookupError } from '@/lib/tenant-from-url'
 import { RaThemeToggle } from '@roboacademy/ui'
 
-const route = useRoute()
 const router = useRouter()
+const route = useRoute()
+
+// Set when the school's subscription has lapsed: from branding before sign-in, or from the
+// redirect when a signed-in learner's session was ended for it (see api/client.ts).
+const accessLocked = computed(() => branding.value.accessLocked === true || route.query.locked === '1')
 
 const tab = ref<'login' | 'register' | 'forgot-password'>('login')
 const resetSuccessMessage = ref('')
@@ -28,11 +32,6 @@ const branding = ref<TenantBranding>({
 })
 
 onMounted(async () => {
-  const tenantId = route.query.tenantId
-  if (typeof tenantId === 'string' && tenantId.trim()) {
-    setStoredTenantId(tenantId.trim())
-  }
-
   try {
     branding.value = await getTenantBranding(getTenantId())
   } catch {
@@ -76,6 +75,14 @@ function onResetSuccess() {
             </div>
           </div>
 
+          <p v-if="accessLocked" role="status"
+            class="m-0 mb-4 rounded-(--ra-md) bg-(--danger)/10 px-4 py-2.5 text-sm text-(--danger)">
+            {{ branding.name }}'s access to RoboAcademy is paused while its subscription is renewed. Please contact
+            your school administrator.</p>
+
+          <p v-if="tenantLookupError" class="m-0 mb-4 rounded-(--ra-md) bg-(--danger)/10 px-4 py-2.5 text-sm text-(--danger)">
+            {{ tenantLookupError }}</p>
+
           <p v-if="resetSuccessMessage && tab === 'login'"
             class="m-0 mb-4 rounded-(--ra-md) bg-(--brand-blue)/10 px-4 py-2.5 text-sm text-(--brand-blue)">{{
             resetSuccessMessage }}</p>
@@ -85,7 +92,7 @@ function onResetSuccess() {
           <RegisterView v-else-if="tab === 'register'" @success="onSuccess" />
           <ForgotPasswordView v-else @success="onResetSuccess" @back-to-login="tab = 'login'" />
 
-          <p v-if="branding.allowRegistration && tab !== 'forgot-password'"
+          <p v-if="branding.allowRegistration && !accessLocked && tab !== 'forgot-password'"
             class="mt-7 text-center text-sm text-(--fg-3)">
             <template v-if="tab === 'login'">
               New here?

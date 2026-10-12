@@ -37,8 +37,11 @@ import {
   type AdminClass,
   type AdminDepartment,
 } from '@/api/identity'
+import PlanLimitBanner from '@/components/PlanLimitBanner.vue'
+import { useTenantUsage } from '@/composables/useTenantUsage'
 
 const router = useRouter()
+const tenantUsage = useTenantUsage()
 
 function openClass(cls: AdminClass, tab?: string) {
   router.push({ path: `/classes/${cls.classId}`, query: tab ? { tab } : {} })
@@ -97,6 +100,7 @@ async function submitCreate() {
   try {
     await createClass(createForm.name, createForm.departmentId || undefined)
     toast.success('Class created.')
+    tenantUsage.load()
     createOpen.value = false
     await load()
   } catch (error) {
@@ -242,11 +246,19 @@ async function removeDepartment(department: AdminDepartment) {
         <Button variant="outline" @click="openDepartmentsDialog">
           <FolderCog :size="14" /> Manage Departments
         </Button>
-        <Button @click="openCreate">
-          <Plus :size="14" /> Add Class
-        </Button>
+        <span :title="tenantUsage.isBlocked('max_classes') ? 'Your plan\'s class limit is reached.' : undefined">
+          <Button class="w-full" :disabled="tenantUsage.isBlocked('max_classes')" @click="openCreate">
+            <Plus :size="14" /> Add Class
+          </Button>
+        </span>
       </div>
     </div>
+
+    <PlanLimitBanner
+      :limits="tenantUsage.attentionLimits.value"
+      :enforcement-mode="tenantUsage.usage.value?.enforcementMode"
+      :keys="['max_classes']"
+    />
 
     <RaCard :padding="0" class="overflow-hidden">
       <div class="border-b border-(--line-1) py-5 px-6">

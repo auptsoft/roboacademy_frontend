@@ -4,8 +4,9 @@ import { getEnv } from '@/lib/runtime-env'
 const API_BASE_URL = getEnv('VITE_API_BASE_URL')
 const PLATFORM_TENANT_ID = getEnv('VITE_PLATFORM_TENANT_ID')
 
-// The tenant to address is captured from ?tenantId= on the auth page and persisted to
-// localStorage, so it sticks across navigation regardless of the current URL.
+// The tenant to address is captured from ?t=<slug> or ?tenantId= on any URL (see
+// lib/tenant-from-url.ts, run by the router) and persisted to localStorage, so it sticks across
+// navigation regardless of the current URL.
 export function getTenantId(): string {
   return getStoredTenantId() || PLATFORM_TENANT_ID
 }
@@ -14,12 +15,48 @@ export class ApiError extends Error {
   status: number
   fieldErrors?: Record<string, string[]>
 
-  constructor(status: number, message: string, fieldErrors?: Record<string, string[]>) {
-    super(message)
+  // Plan-entitlement failures (limit_exceeded / feature_unavailable). The message is replaced
+  // with learner-facing wording - a learner can't upgrade a plan, only ask their school.
+  planErrorCode?: string
+
+  constructor(status: number, message: string, fieldErrors?: Record<string, string[]>, planErrorCode?: string) {
+    super(describePlanError(planErrorCode) ?? message)
     this.name = 'ApiError'
     this.status = status
     this.fieldErrors = fieldErrors
+    this.planErrorCode = planErrorCode
   }
+}
+
+function describePlanError(code: string | undefined): string | null {
+  if (code === 'limit_exceeded') {
+    return "Your school isn't able to add more accounts right now. Please contact your school."
+  }
+  if (code === 'feature_unavailable') {
+    return "This isn't available at your school. Please contact your school if you think it should be."
+  }
+  if (code === 'subscription_expired') {
+    return "Your school's access is paused. Please contact your school administrator."
+  }
+  return null
+}
+
+// The school's subscription lapsed past its grace period (see the backend's
+// SubscriptionAccessMiddleware): every call will now fail, so end the session and let the login
+// page explain, rather than leaving the learner on a page full of errors.
+function endSessionForLockedSchool(): void {
+  clearSession()
+  if (window.location.pathname !== '/auth') {
+    window.location.assign('/auth?locked=1')
+  }
+}
+
+function planErrorCodeOf(data: unknown): string | undefined {
+  if (data && typeof data === 'object' && 'code' in data) {
+    const code = (data as { code: unknown }).code
+    if (code === 'limit_exceeded' || code === 'feature_unavailable' || code === 'subscription_expired') return code
+  }
+  return undefined
 }
 
 export interface PageMeta {
@@ -80,7 +117,11 @@ async function apiFetchEnvelope<T>(path: string, init: RequestInit = {}): Promis
       envelope?.data && typeof envelope.data === 'object' && 'errors' in envelope.data
         ? (envelope.data as { errors?: Record<string, string[]> }).errors
         : undefined
-    throw new ApiError(response.status, message, fieldErrors)
+    const planErrorCode = planErrorCodeOf(envelope?.data)
+    if (response.status === 403 && planErrorCode === 'subscription_expired') {
+      endSessionForLockedSchool()
+    }
+    throw new ApiError(response.status, message, fieldErrors, planErrorCode)
   }
 
   return (envelope as ApiEnvelope<T>) ?? { isSuccessful: true, message: '', data: null }

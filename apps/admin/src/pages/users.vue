@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import { RaKpi, RaCard, RaChip, RaAvatar, RaStatusDot } from '@roboacademy/ui'
 import { Filter, MoreVertical, Plus, Upload } from 'lucide-vue-next'
@@ -37,6 +37,8 @@ import {
   type AdminUser,
   type BulkCreateUsersResponse,
 } from '@/api/identity'
+import PlanLimitBanner from '@/components/PlanLimitBanner.vue'
+import { useTenantUsage } from '@/composables/useTenantUsage'
 
 const currentUserId = getCurrentUser()?.userId
 
@@ -125,6 +127,7 @@ async function submitCreate() {
       roles: createForm.roles.length > 0 ? createForm.roles : undefined,
     })
     toast.success('User created.')
+    tenantUsage.load()
     createOpen.value = false
     resetCreateForm()
     await load()
@@ -245,6 +248,7 @@ async function toggleActive(user: AdminUser) {
     } else {
       await reactivateUser(user.userId)
       toast.success('User reactivated.')
+      tenantUsage.load()
     }
     await load()
   } catch (error) {
@@ -259,6 +263,13 @@ const bulkImportOpen = ref(false)
 const bulkImportFile = ref<File | null>(null)
 const bulkImportSubmitting = ref(false)
 const bulkImportResult = ref<BulkCreateUsersResponse | null>(null)
+
+// A new user can be a learner or staff, so creation is only fully blocked once both kinds of
+// seat are used up on a hard plan; otherwise the banner explains and the API refuses the
+// specific role that's full.
+const tenantUsage = useTenantUsage()
+const seatsFull = computed(() => tenantUsage.isBlocked('max_students') && tenantUsage.isBlocked('max_staff'))
+const seatsFullHint = 'Your plan has no free student or staff seats.'
 
 function onBulkImportFileSelected(event: Event) {
   const input = event.target as HTMLInputElement
@@ -275,6 +286,7 @@ async function submitBulkImport() {
   bulkImportSubmitting.value = true
   try {
     bulkImportResult.value = await bulkCreateUsers(bulkImportFile.value)
+    tenantUsage.load()
   } catch (error) {
     toast.error(error instanceof ApiError ? error.message : 'Failed to import users.')
   } finally {
@@ -300,16 +312,26 @@ async function onBulkImportOpenChange(open: boolean) {
         <p class="mt-1.5 text-sm text-(--fg-3)">Create, edit, and manage access for platform users.</p>
       </div>
       <div class="flex gap-2.5 max-sm:flex-col">
-        <Button variant="outline" @click="bulkImportOpen = true">
-          <Upload :size="14" />
-          Import CSV
-        </Button>
-        <Button @click="createOpen = true">
-          <Plus :size="14" />
-          Add User
-        </Button>
+        <span :title="seatsFull ? seatsFullHint : undefined">
+          <Button variant="outline" class="w-full" :disabled="seatsFull" @click="bulkImportOpen = true">
+            <Upload :size="14" />
+            Import CSV
+          </Button>
+        </span>
+        <span :title="seatsFull ? seatsFullHint : undefined">
+          <Button class="w-full" :disabled="seatsFull" @click="createOpen = true">
+            <Plus :size="14" />
+            Add User
+          </Button>
+        </span>
       </div>
     </div>
+
+    <PlanLimitBanner
+      :limits="tenantUsage.attentionLimits.value"
+      :enforcement-mode="tenantUsage.usage.value?.enforcementMode"
+      :keys="['max_students', 'max_staff']"
+    />
 
     <div class="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-4">
       <RaKpi label="Total Users" :value="String(meta?.totalCount ?? 0)" />

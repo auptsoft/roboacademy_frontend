@@ -10,6 +10,7 @@ import AdminSidebar from './AdminSidebar.vue'
 import AdminNavList from './AdminNavList.vue'
 import BrandMark from '@/components/BrandMark.vue'
 import NotificationBell from '@/components/NotificationBell.vue'
+import SubscriptionBanner from '@/components/SubscriptionBanner.vue'
 import { exitTenant, getCurrentUser, getImpersonationTarget } from '@/store/auth'
 
 const router = useRouter()
@@ -76,6 +77,7 @@ async function exitImpersonation() {
           Exit
         </Button>
       </div>
+      <SubscriptionBanner :key="impersonation?.tenantId ?? 'home'" />
       <main class="min-h-0 flex-1 overflow-y-auto">
         <router-view />
       </main>

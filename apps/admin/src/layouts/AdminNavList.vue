@@ -6,6 +6,7 @@ import { ChevronDown } from 'lucide-vue-next'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
 import { hasPermission, isImpersonating } from '@/store/auth'
 import { adminNav, isNavGroup, type AdminNavGroup, type AdminNavLeaf } from './nav-items'
+import { hasTenantFeature } from '@/branding'
 
 const route = useRoute()
 const router = useRouter()
@@ -21,8 +22,17 @@ function isActive(path: AdminNavLeaf['path']) {
   return route.path.startsWith(resolved)
 }
 
+// Platform operators still see areas outside the tenant's plan (flagged), so they can support a
+// school without first changing its plan; everyone else just doesn't see them.
+const seesGatedAreas = hasPermission('tenancy:plans:manage')
+
+function isOutsidePlan(item: AdminNavLeaf): boolean {
+  return !!item.feature && !hasTenantFeature(item.feature)
+}
+
 function isVisible(item: AdminNavLeaf): boolean {
   if (item.hiddenWhileImpersonating && isImpersonating()) return false
+  if (isOutsidePlan(item) && !seesGatedAreas) return false
   if (!item.permission) return true
   const required = Array.isArray(item.permission) ? item.permission : [item.permission]
   return required.some(hasPermission)
@@ -62,6 +72,7 @@ function leafClass(active: boolean) {
         <span v-if="isActive(entry.path)" class="absolute top-1.5 bottom-1.5 left-0 w-0.5 rounded-full bg-(--brand-blue)" />
         <component :is="entry.icon" :size="16" />
         {{ entry.label }}
+        <span v-if="isOutsidePlan(entry)" class="ml-auto text-[10px] font-semibold uppercase tracking-wide text-(--fg-4)">Not in plan</span>
       </button>
 
       <Collapsible v-else-if="isNavGroup(entry) && visibleItems(entry).length > 0" v-model:open="openGroups[entry.id]">
@@ -82,6 +93,7 @@ function leafClass(active: boolean) {
             >
               <component :is="item.icon" :size="14" />
               {{ item.label }}
+              <span v-if="isOutsidePlan(item)" class="ml-auto text-[10px] font-semibold uppercase tracking-wide text-(--fg-4)">Not in plan</span>
             </button>
           </div>
         </CollapsibleContent>

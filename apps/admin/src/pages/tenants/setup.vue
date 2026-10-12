@@ -3,12 +3,13 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { RaCard, RaChip, RaStatusDot, formatDate } from '@roboacademy/ui'
-import { ShieldCheck, X, PauseCircle, PlayCircle, ImageUp, ChevronDown, LogIn } from 'lucide-vue-next'
+import { ShieldCheck, X, PauseCircle, PlayCircle, ImageUp, ChevronDown, LogIn, Info } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import Input from '@/components/ui/input.vue'
 import Label from '@/components/ui/label.vue'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
 import UserPreviewPopover from '@/components/UserPreviewPopover.vue'
+import TenantPlanCard from '@/components/TenantPlanCard.vue'
 import AuditLogFilters, { type AuditLogFilterState } from '@/components/AuditLogFilters.vue'
 import { ApiError, postImpersonationToken } from '@/api/client'
 import { enterTenant, hasPermission, isImpersonating } from '@/store/auth'
@@ -43,13 +44,19 @@ const canManage = hasPermission('tenancy:manage')
 const canManageOwn = canManage || hasPermission('tenancy:manage-own')
 const canImpersonate = hasPermission('tenancy:impersonate')
 
-const sections = [
+// Whether this tenant's plan includes custom branding (the custom_branding feature, read from
+// its public branding response). When it doesn't, the Branding section stays visible but can't
+// be saved. Assumed included until known, so the controls don't flicker disabled on every load.
+const brandingIncluded = ref(true)
+
+const sections = computed(() => [
   { id: 'general', label: 'General' },
+  { id: 'plan', label: 'Plan & Usage' },
   { id: 'hosts', label: 'Hosts' },
   { id: 'branding', label: 'Branding' },
   ...(canImpersonate ? [{ id: 'admin-access', label: 'Admin Access' }] : []),
   ...(canManageOwn ? [{ id: 'activity', label: 'Activity' }] : []),
-]
+])
 
 const tenant = ref<Tenant | null>(null)
 const loading = ref(true)
@@ -57,6 +64,8 @@ const notFound = ref(false)
 
 // Collapsed by default - each section owns its own collapse state.
 const generalOpen = ref(false)
+// Opened when linked to directly (e.g. from a plan's school list).
+const planOpen = ref(route.hash === '#plan')
 const hostsOpen = ref(false)
 const brandingOpen = ref(false)
 const adminAccessOpen = ref(false)
@@ -224,6 +233,7 @@ async function loadBranding() {
   brandingErrors.value = {}
   try {
     const branding = await getTenantBranding(tenantId.value)
+    brandingIncluded.value = branding.features?.custom_branding ?? true
     brandingForm.logoUrl = branding.logoUrl ?? ''
     brandingForm.primaryColor = branding.primaryColor ?? ''
     brandingForm.secondaryColor = branding.secondaryColor ?? ''
@@ -363,6 +373,12 @@ watch(auditFilters, () => {
   auditFilterDebounce = setTimeout(() => loadAudit(1), 300)
 }, { deep: true })
 
+// A plan change can add or remove custom branding, so the Branding section is re-evaluated too.
+async function onPlanChanged() {
+  await loadTenant()
+  await loadBranding()
+}
+
 onMounted(async () => {
   await loadTenant()
   if (notFound.value) return
@@ -500,6 +516,13 @@ watch(tenantId, async () => {
             </Collapsible>
           </RaCard>
 
+          <TenantPlanCard
+            v-model:open="planOpen"
+            :tenant-id="tenant.tenantId"
+            :is-platform-tenant="isPlatformTenant"
+            @changed="onPlanChanged"
+          />
+
           <!-- Hosts -->
           <RaCard id="hosts" :padding="0" class="scroll-mt-6 overflow-hidden">
             <Collapsible v-model:open="hostsOpen">
@@ -576,7 +599,7 @@ watch(tenantId, async () => {
                         <button
                           type="button"
                           class="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-(--ra-md) border border-(--line-2) bg-(--bg-3) disabled:pointer-events-none disabled:opacity-50"
-                          :disabled="logoUploading"
+                          :disabled="logoUploading || !brandingIncluded"
                           @click="logoFileInput?.click()"
                         >
                           <img v-if="brandingForm.logoUrl" :src="brandingForm.logoUrl" alt="Logo preview" class="size-full object-contain">
@@ -606,7 +629,7 @@ watch(tenantId, async () => {
                         <button
                           type="button"
                           class="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-(--ra-md) border border-(--line-2) bg-(--bg-3) disabled:pointer-events-none disabled:opacity-50"
-                          :disabled="featureImageUploading"
+                          :disabled="featureImageUploading || !brandingIncluded"
                           @click="featureImageFileInput?.click()"
                         >
                           <img
@@ -681,8 +704,12 @@ watch(tenantId, async () => {
                       />
                       <p v-for="msg in brandingErrors.WelcomeMessage" :key="msg" class="m-0 text-xs text-(--danger)">{{ msg }}</p>
                     </div>
-                    <div class="flex justify-end">
-                      <Button type="submit" :disabled="brandingSubmitting">
+                    <div class="flex items-center justify-end gap-3 max-sm:flex-col-reverse max-sm:items-stretch">
+                      <p v-if="!brandingIncluded" class="m-0 flex items-center gap-1.5 text-xs text-(--fg-3)">
+                        <Info :size="13" class="shrink-0" />
+                        Editing branding isn't available on your current plan.
+                      </p>
+                      <Button type="submit" :disabled="brandingSubmitting || !brandingIncluded">
                         {{ brandingSubmitting ? 'Saving…' : 'Save Branding' }}
                       </Button>
                     </div>
