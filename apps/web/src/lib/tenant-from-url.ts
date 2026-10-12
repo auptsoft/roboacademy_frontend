@@ -3,6 +3,7 @@ import type { LocationQuery } from 'vue-router'
 import { getTenantId } from '@/api/client'
 import { setStoredTenantId } from '@/api/session'
 import { resolveTenantSlug } from '@/api/tenancy'
+import { isPlatformHost } from '@/lib/tenant-from-host'
 import { isAuthenticated, logout } from '@/store/auth'
 
 // Slug -> tenant id, per browser tab, so navigating with ?t= still on the URL doesn't refetch.
@@ -43,6 +44,10 @@ async function tenantIdForSlug(slug: string): Promise<string | null> {
 // Run from the router guard, before any redirect drops the query. Switching to a different
 // tenant signs the user out, since their tokens are bound to the tenant they signed in to.
 export async function captureTenantFromQuery(query: LocationQuery): Promise<void> {
+  // On a tenant's own domain the hostname already picked the tenant (see tenant-from-host.ts),
+  // and a link naming another one must not override it.
+  if (!isPlatformHost()) return
+
   const slug = queryValue(query, 't')
   const tenantId = slug ? await tenantIdForSlug(slug) : queryValue(query, 'tenantId')
 

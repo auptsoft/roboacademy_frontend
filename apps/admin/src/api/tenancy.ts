@@ -197,3 +197,11 @@ export function resolveTenantSlug(slug: string): Promise<ResolvedTenant> {
     headers: { 'X-Tenant-Id': getEnv('VITE_PLATFORM_TENANT_ID') },
   })
 }
+
+// Looks a tenant up by one of its hostnames, for an app served on the school's own domain (see
+// lib/tenant-from-host.ts). Addressed as the platform tenant for the same reason as the slug lookup.
+export function resolveTenantHost(host: string): Promise<ResolvedTenant> {
+  return apiFetch<ResolvedTenant>(`/api/tenancy/resolve-host/${encodeURIComponent(host)}`, {
+    headers: { 'X-Tenant-Id': getEnv('VITE_PLATFORM_TENANT_ID') },
+  })
+}

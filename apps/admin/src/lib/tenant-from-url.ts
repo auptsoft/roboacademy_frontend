@@ -2,6 +2,7 @@ import { ref } from 'vue'
 import type { LocationQuery } from 'vue-router'
 import { getTenantId, setStoredTenantId } from '@/api/session'
 import { resolveTenantSlug } from '@/api/tenancy'
+import { isPlatformHost } from '@/lib/tenant-from-host'
 import { applyTenantBranding } from '@/branding'
 import { isAuthenticated, logout, syncActiveTenantId } from '@/store/auth'
 
@@ -44,6 +45,10 @@ async function tenantIdForSlug(slug: string): Promise<string | null> {
 // tenant signs the user out (ending any impersonation too), since their tokens are bound to the
 // tenant they signed in to.
 export async function captureTenantFromQuery(query: LocationQuery): Promise<void> {
+  // On a tenant's own domain the hostname already picked the tenant (see tenant-from-host.ts),
+  // and a link naming another one must not override it.
+  if (!isPlatformHost()) return
+
   const slug = queryValue(query, 't')
   const tenantId = slug ? await tenantIdForSlug(slug) : queryValue(query, 'tenantId')
 
