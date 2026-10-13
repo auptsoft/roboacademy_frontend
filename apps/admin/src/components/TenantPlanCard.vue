@@ -25,6 +25,7 @@ import {
 } from '@/api/plans'
 import { hasPermission } from '@/store/auth'
 import { dueDateToIso, isoToDueDate } from '@/lib/pickers'
+import { isAIPlanKey } from '@/lib/ai'
 
 const props = defineProps<{
   tenantId: string
@@ -73,10 +74,20 @@ function featureLabel(key: string): string {
   return catalog.value?.features.find((f) => f.key === key)?.label ?? key
 }
 
+// AI features and allowances are shown in the school's AI section, as percentages - token
+// counts mean nothing to a school, so they're left out of the generic lists here.
 const disabledFeatures = computed(() =>
   Object.entries(entitlements.value?.features ?? {})
-    .filter(([, enabled]) => !enabled)
+    .filter(([key, enabled]) => !enabled && !isAIPlanKey(key))
     .map(([key]) => featureLabel(key)),
+)
+
+const seatLimits = computed(() => (usage.value?.limits ?? []).filter((l) => !isAIPlanKey(l.key)))
+
+const aiAllowances = computed(() =>
+  (usage.value?.limits ?? [])
+    .filter((l) => isAIPlanKey(l.key) && l.limit !== null && l.limit > 0)
+    .map((l) => ({ key: l.key, tier: l.key.includes('enhanced') ? 'Enhanced' : 'Basic', percent: usagePercent(l) })),
 )
 
 function usagePercent(limit: LimitUsage): number {
@@ -289,7 +300,7 @@ defineExpose({ reload: load })
                 {{ usage.enforcementMode === 'Hard' ? 'Creation is blocked at the limit' : 'Over-limit creation is allowed and flagged' }}
               </span>
             </div>
-            <div v-for="limit in usage.limits" :key="limit.key" class="flex flex-col gap-1.5">
+            <div v-for="limit in seatLimits" :key="limit.key" class="flex flex-col gap-1.5">
               <div class="flex items-center justify-between text-sm">
                 <span class="text-(--fg-2)">{{ limit.label }}</span>
                 <span :class="limit.overLimit ? 'font-semibold text-(--danger)' : 'text-(--fg-1)'">
@@ -300,6 +311,16 @@ defineExpose({ reload: load })
               <div v-if="limit.limit !== null" class="h-1.5 overflow-hidden rounded-(--ra-pill) bg-(--bg-3)">
                 <div class="h-full rounded-(--ra-pill) transition-[width]" :class="usageBarClass(limit)" :style="{ width: `${usagePercent(limit)}%` }" />
               </div>
+            </div>
+            <div v-if="aiAllowances.length > 0" class="flex items-center justify-between text-sm">
+              <span class="text-(--fg-2)">AI allowance this month</span>
+              <span class="text-(--fg-1)">
+                <template v-for="(allowance, index) in aiAllowances" :key="allowance.key">
+                  <span v-if="index > 0" class="text-(--fg-3)"> · </span>
+                  {{ allowance.tier }} {{ allowance.percent }}%
+                </template>
+                <span class="text-(--fg-3)"> used — details under AI</span>
+              </span>
             </div>
             <p v-if="disabledFeatures.length > 0" class="m-0 text-xs text-(--fg-3)">
               Not included: {{ disabledFeatures.join(', ') }}

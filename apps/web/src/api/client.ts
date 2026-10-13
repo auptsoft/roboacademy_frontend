@@ -38,6 +38,20 @@ function describePlanError(code: string | undefined): string | null {
   if (code === 'subscription_expired') {
     return "Your school's access is paused. Please contact your school administrator."
   }
+  // AI features (see the backend's AI gateway). ai_limit_exceeded is limit_exceeded on an AI
+  // allowance, told apart by its key, so it doesn't read as "no more accounts".
+  if (code === 'ai_limit_exceeded') {
+    return "Your school's AI allowance for this month has been used. It renews on the 1st."
+  }
+  if (code === 'ai_disabled') {
+    return 'AI features are turned off for your school.'
+  }
+  if (code === 'ai_feature_cap_reached') {
+    return 'Your school has paused this AI feature for the rest of the month.'
+  }
+  if (code === 'ai_unavailable') {
+    return 'AI is not available right now. Please try again later.'
+  }
   return null
 }
 
@@ -51,10 +65,14 @@ function endSessionForLockedSchool(): void {
   }
 }
 
+const AI_ERROR_CODES = ['ai_disabled', 'ai_feature_cap_reached', 'ai_unavailable']
+
 function planErrorCodeOf(data: unknown): string | undefined {
   if (data && typeof data === 'object' && 'code' in data) {
-    const code = (data as { code: unknown }).code
+    const { code, key } = data as { code: unknown; key?: unknown }
+    if (code === 'limit_exceeded' && typeof key === 'string' && key.startsWith('max_ai_')) return 'ai_limit_exceeded'
     if (code === 'limit_exceeded' || code === 'feature_unavailable' || code === 'subscription_expired') return code
+    if (typeof code === 'string' && AI_ERROR_CODES.includes(code)) return code
   }
   return undefined
 }

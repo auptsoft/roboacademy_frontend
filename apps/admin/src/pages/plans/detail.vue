@@ -21,6 +21,7 @@ import {
   type PlanEnforcementMode,
   type PlanSubscribedTenant,
 } from '@/api/plans'
+import { AI_FEATURES, AI_BASIC_TOKENS_KEY, AI_ENHANCED_TOKENS_KEY, AI_TOKEN_KEYS, allowanceHint, isAIPlanKey } from '@/lib/ai'
 
 const route = useRoute()
 const router = useRouter()
@@ -81,6 +82,47 @@ async function load() {
 }
 
 onMounted(load)
+
+// --- AI: shown in its own card, with each feature's Enhanced switch beside it and the two token
+// allowances translated into uses, instead of mixed into the generic lists below. ---
+const genericLimits = computed(() => catalog.value?.limits.filter((d) => !isAIPlanKey(d.key)) ?? [])
+const genericFeatures = computed(() => catalog.value?.features.filter((d) => !isAIPlanKey(d.key)) ?? [])
+const aiFeatures = computed(() =>
+  AI_FEATURES.filter((f) => catalog.value?.features.some((d) => d.key === f.key)).map((f) => ({
+    ...f,
+    description: catalog.value?.features.find((d) => d.key === f.key)?.description ?? '',
+  })),
+)
+const aiLimits = computed(() => catalog.value?.limits.filter((d) => AI_TOKEN_KEYS.includes(d.key)) ?? [])
+
+function aiAllowanceHint(key: string): string {
+  const entry = limitForm[key]
+  if (!entry) return ''
+  if (entry.unlimited) return 'Not capped.'
+  const tokens = Number.parseInt(entry.value, 10)
+  if (Number.isNaN(tokens) || tokens <= 0) return key === AI_ENHANCED_TOKENS_KEY ? 'No Enhanced allowance.' : 'No AI allowance.'
+  const included = aiFeatures.value.filter((f) => featureForm[f.key])
+  return `${allowanceHint(tokens, included.length > 0 ? included : aiFeatures.value)} a month.`
+}
+
+// D0.3: a missing (unlimited) AI allowance is allowed, but it means uncapped paid usage.
+const aiWarnings = computed(() => {
+  const warnings: string[] = []
+  const included = aiFeatures.value.filter((f) => featureForm[f.key])
+  const enhanced = included.filter((f) => featureForm[f.enhancedKey])
+  const basic = limitForm[AI_BASIC_TOKENS_KEY]
+  const enhancedLimit = limitForm[AI_ENHANCED_TOKENS_KEY]
+  if (included.length > 0 && basic?.unlimited) {
+    warnings.push('AI features are on but the Basic allowance is unlimited, so AI usage on this plan is not capped.')
+  }
+  if (enhanced.length > 0 && enhancedLimit?.unlimited) {
+    warnings.push('Some features run on Enhanced but the Enhanced allowance is unlimited, so Enhanced usage is not capped.')
+  }
+  if (enhanced.length > 0 && enhancedLimit && !enhancedLimit.unlimited && Number.parseInt(enhancedLimit.value, 10) === 0) {
+    warnings.push(`${enhanced.map((f) => f.label).join(' and ')} ${enhanced.length === 1 ? 'is' : 'are'} set to Enhanced, but the Enhanced allowance is 0, so ${enhanced.length === 1 ? 'it' : 'they'} will always run on Basic.`)
+  }
+  return warnings
+})
 
 const saving = ref(false)
 
@@ -264,7 +306,7 @@ const selectClass =
             </div>
             <div class="flex flex-col">
               <div
-                v-for="definition in catalog.limits"
+                v-for="definition in genericLimits"
                 :key="definition.key"
                 class="flex items-center gap-4 border-b border-(--line-1) py-3.5 px-6 last:border-b-0 max-md:flex-wrap"
               >
@@ -302,7 +344,7 @@ const selectClass =
             </div>
             <div class="flex flex-col">
               <label
-                v-for="definition in catalog.features"
+                v-for="definition in genericFeatures"
                 :key="definition.key"
                 class="flex cursor-pointer items-center gap-4 border-b border-(--line-1) py-3.5 px-6 last:border-b-0"
               >
@@ -316,6 +358,75 @@ const selectClass =
                   <span class="block text-xs text-(--fg-3)">{{ definition.description }}</span>
                 </span>
               </label>
+            </div>
+          </RaCard>
+
+          <RaCard v-if="aiFeatures.length > 0" :padding="0" class="overflow-hidden">
+            <div class="border-b border-(--line-1) py-5 px-6">
+              <h3 class="m-0 text-lg font-bold text-(--fg-1)">AI</h3>
+              <p class="m-0 mt-1 text-xs text-(--fg-3)">
+                Which AI features this plan includes, which run on the Enhanced model tier, and the monthly AI allowance.
+                Schools still have to accept the AI terms and can switch features off themselves.
+              </p>
+            </div>
+            <div class="flex flex-col">
+              <div
+                v-for="feature in aiFeatures"
+                :key="feature.key"
+                class="flex items-center gap-4 border-b border-(--line-1) py-3.5 px-6 max-md:flex-wrap"
+              >
+                <label class="flex flex-1 cursor-pointer items-center gap-4">
+                  <input v-model="featureForm[feature.key]" type="checkbox" class="size-4 cursor-pointer accent-(--primary)">
+                  <span class="flex-1">
+                    <span class="block text-sm font-semibold text-(--fg-1)">{{ feature.label }}</span>
+                    <span class="block text-xs text-(--fg-3)">{{ feature.description }}</span>
+                  </span>
+                </label>
+                <label
+                  class="flex items-center gap-2 text-sm"
+                  :class="featureForm[feature.key] ? 'cursor-pointer text-(--fg-2)' : 'text-(--fg-4)'"
+                >
+                  <input
+                    v-model="featureForm[feature.enhancedKey]"
+                    type="checkbox"
+                    class="size-4 cursor-pointer accent-(--primary)"
+                    :disabled="!featureForm[feature.key]"
+                    :aria-label="`${feature.label} uses Enhanced`"
+                  >
+                  Enhanced
+                </label>
+              </div>
+
+              <div
+                v-for="definition in aiLimits"
+                :key="definition.key"
+                class="flex items-center gap-4 border-b border-(--line-1) py-3.5 px-6 last:border-b-0 max-md:flex-wrap"
+              >
+                <div class="flex-1">
+                  <p class="m-0 text-sm font-semibold text-(--fg-1)">{{ definition.label }}</p>
+                  <p class="m-0 text-xs text-(--fg-3)">{{ aiAllowanceHint(definition.key) }}</p>
+                </div>
+                <template v-if="limitForm[definition.key]">
+                  <Input
+                    v-model="limitForm[definition.key].value"
+                    type="number"
+                    min="0"
+                    step="100000"
+                    class="h-9 w-36"
+                    :disabled="limitForm[definition.key].unlimited"
+                    :aria-label="`${definition.label} limit`"
+                    :placeholder="limitForm[definition.key].unlimited ? '∞' : '0'"
+                  />
+                  <label class="flex items-center gap-2 text-sm text-(--fg-2)">
+                    <input v-model="limitForm[definition.key].unlimited" type="checkbox" class="size-4 cursor-pointer accent-(--primary)">
+                    Unlimited
+                  </label>
+                </template>
+              </div>
+
+              <ul v-if="aiWarnings.length > 0" class="m-0 flex list-none flex-col gap-1.5 border-t border-(--line-1) bg-(--warning-soft) py-3.5 px-6">
+                <li v-for="warning in aiWarnings" :key="warning" class="text-xs text-(--fg-1)">{{ warning }}</li>
+              </ul>
             </div>
           </RaCard>
 

@@ -35,6 +35,20 @@ export const FEATURE_LABELS: Record<string, string> = {
   custom_branding: 'Custom branding',
   events: 'Events',
   announcements: 'Announcements',
+  ai_feedback_drafts: 'AI feedback drafts',
+  ai_feedback_drafts_enhanced: 'Enhanced AI feedback drafts',
+  ai_authoring: 'AI authoring help',
+  ai_authoring_enhanced: 'Enhanced AI authoring help',
+  max_ai_enhanced_tokens_per_month: 'Enhanced AI',
+}
+
+// AI allowances are token counts, which mean nothing to a school, so their limit errors say
+// what happened instead of quoting numbers.
+const AI_LIMIT_MESSAGES: Record<string, string> = {
+  max_ai_basic_tokens_per_month:
+    "Your school has used this month's AI allowance. It renews on the 1st, or contact RoboAcademy to upgrade.",
+  max_ai_enhanced_tokens_per_month:
+    "Your school has used this month's Enhanced AI allowance. Basic AI is still available.",
 }
 
 export function limitNoun(key: string, count: number): string {
@@ -55,6 +69,7 @@ export function describePlanError(details: PlanErrorDetails): string {
   }
 
   const { key, limit, current, requested } = details
+  if (AI_LIMIT_MESSAGES[key]) return AI_LIMIT_MESSAGES[key]
   const allowance = `Your plan allows ${limit.toLocaleString()} ${limitNoun(key, limit)} and you have ${current.toLocaleString()}.`
   const attempt = requested > 1 ? `This would add ${requested.toLocaleString()} more. ` : ''
   return `${attempt}${allowance} Free up space or contact RoboAcademy to upgrade.`
