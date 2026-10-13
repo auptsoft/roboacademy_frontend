@@ -200,8 +200,8 @@ const modelDialog = reactive({
   modelId: '',
   kind: 'Chat' as AIModelKind,
   displayName: '',
-  inputPrice: '',
-  outputPrice: '',
+  inputPrice: '' as string | number,
+  outputPrice: '' as string | number,
 })
 
 function openModelDialog() {
@@ -214,7 +214,11 @@ function openModelDialog() {
 const checking = ref<string | null>(null)
 
 async function submitModel() {
-  const toPrice = (value: string) => (value.trim() === '' ? null : Number(value))
+  // v-model on a type="number" input yields a number once the field is typed in, '' when empty.
+  const toPrice = (value: string | number) => {
+    const text = String(value).trim()
+    return text === '' ? null : Number(text)
+  }
   checking.value = 'new'
   try {
     const created = await createAIModel({
@@ -569,11 +573,11 @@ async function submitHealthCheck() {
           <div class="grid grid-cols-2 gap-4">
             <div class="flex flex-col gap-1.5">
               <Label for="model-in">Input $ / 1M tokens</Label>
-              <Input id="model-in" v-model="modelDialog.inputPrice" type="number" min="0" step="0.001" />
+              <Input id="model-in" v-model="modelDialog.inputPrice" type="number" min="0" step="any" />
             </div>
             <div class="flex flex-col gap-1.5">
               <Label for="model-out">Output $ / 1M tokens</Label>
-              <Input id="model-out" v-model="modelDialog.outputPrice" type="number" min="0" step="0.001" />
+              <Input id="model-out" v-model="modelDialog.outputPrice" type="number" min="0" step="any" />
             </div>
           </div>
           <DialogFooter>

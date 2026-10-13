@@ -33,7 +33,8 @@ const month = ref(thisMonth)
 
 const form = reactive({
   enabled: false,
-  features: {} as Record<string, { enabled: boolean; cap: string }>,
+  // cap: '' when blank; a number once typed (v-model on a type="number" input casts).
+  features: {} as Record<string, { enabled: boolean; cap: string | number }>,
 })
 
 function fillForm(loaded: AISettings) {
@@ -107,7 +108,8 @@ const saving = ref(false)
 function featurePayload() {
   return (settings.value?.features ?? []).map((f) => {
     const entry = form.features[f.feature]
-    const cap = entry?.cap.trim() ? Number.parseInt(entry.cap, 10) : null
+    const raw = String(entry?.cap ?? '').trim()
+    const cap = raw ? Number.parseInt(raw, 10) : null
     return { feature: f.feature, enabled: entry?.enabled ?? false, capPercent: Number.isNaN(cap) ? null : cap }
   })
 }
