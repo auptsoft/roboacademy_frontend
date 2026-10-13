@@ -13,6 +13,7 @@ import Pagination from '@/components/Pagination.vue'
 import QuestionOptionsEditor from '@/components/QuestionOptionsEditor.vue'
 import RichTextEditor from '@/components/RichTextEditor.vue'
 import CopyAssessmentToTenantDialog from '@/components/CopyAssessmentToTenantDialog.vue'
+import AIDraftPanel from '@/components/AIDraftPanel.vue'
 import { ApiError } from '@/api/client'
 import { usePagedList } from '@/composables/usePagedList'
 import { useCanCopyCrossTenant } from '@/composables/useCanCopyCrossTenant'
@@ -24,6 +25,7 @@ import {
   cloneAssessment,
   listAttempts,
   gradeAttempt,
+  setGradingGuidance,
   listQuestionBank,
   type AuthoredAssessment,
   type AttemptItem,
@@ -266,6 +268,25 @@ const statusTone: Record<AttemptItem['status'], 'neutral' | 'info'> = {
   InProgress: 'neutral',
   Submitted: 'info',
   Graded: 'neutral',
+}
+
+// --- Grading guidance (Written; editable any time) ---
+const guidanceForm = ref('')
+const guidanceSaving = ref(false)
+watch(() => assessment.value?.gradingGuidance, (value) => { guidanceForm.value = value ?? '' }, { immediate: true })
+
+async function submitGuidance() {
+  if (!assessment.value) return
+  guidanceSaving.value = true
+  try {
+    const saved = await setGradingGuidance(assessment.value.id, guidanceForm.value.trim() || null)
+    assessment.value = { ...assessment.value, gradingGuidance: saved.gradingGuidance }
+    toast.success('Grading guidance saved.')
+  } catch (error) {
+    toast.error(error instanceof ApiError ? error.message : 'Failed to save grading guidance.')
+  } finally {
+    guidanceSaving.value = false
+  }
 }
 
 // --- Grade dialog ---
@@ -578,6 +599,30 @@ async function submitGrade() {
                     </div>
                   </template>
                 </div>
+                <!-- Grading guidance: Written only, editable even after attempts (never shown to learners) -->
+                <form
+                  v-if="assessment.type === 'Written'"
+                  class="flex flex-col gap-1.5 border-t border-(--line-1) py-5 px-6"
+                  @submit.prevent="submitGuidance"
+                >
+                  <Label for="grading-guidance">Grading guidance</Label>
+                  <textarea
+                    id="grading-guidance"
+                    v-model="guidanceForm"
+                    rows="4"
+                    maxlength="8000"
+                    placeholder="e.g. A good answer mentions both light sensors and explains why the motor speeds differ."
+                    class="w-full resize-y rounded-(--ra-md) border border-(--line-2) bg-(--bg-3) px-2.5 py-1.75 font-sans text-sm text-(--fg-2) outline-none placeholder:text-(--fg-4)"
+                  />
+                  <p class="m-0 text-xs text-(--fg-3)">
+                    Not shown to learners. Used when grading, and by AI to draft feedback. A model answer or a list of points to look for works best.
+                  </p>
+                  <div class="flex justify-end">
+                    <Button type="submit" size="sm" variant="outline" :disabled="guidanceSaving || guidanceForm === (assessment.gradingGuidance ?? '')">
+                      {{ guidanceSaving ? 'Saving…' : 'Save Guidance' }}
+                    </Button>
+                  </div>
+                </form>
               </CollapsibleContent>
             </Collapsible>
           </RaCard>
@@ -652,6 +697,11 @@ async function submitGrade() {
           <DialogDescription>Only Passed matters for certification eligibility — score and feedback are for record-keeping.</DialogDescription>
         </DialogHeader>
         <form class="flex flex-col gap-4" @submit.prevent="submitGrade">
+          <AIDraftPanel
+            v-if="gradingAttempt?.responseText"
+            :attempt-id="gradingAttempt.id"
+            @use="(d) => Object.assign(gradeForm, { passed: d.passed, score: d.score === null ? '' : String(d.score), feedback: d.feedback })"
+          />
           <div v-if="gradingAttempt?.responseText" class="flex flex-col gap-1.5">
             <Label>Response</Label>
             <p class="m-0 rounded-(--ra-md) border border-(--line-2) bg-(--bg-3) p-3 text-sm text-(--fg-1) whitespace-pre-wrap">

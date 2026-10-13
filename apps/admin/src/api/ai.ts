@@ -93,6 +93,45 @@ export function getAIUsage(month?: string): Promise<AIUsage> {
   return apiFetch(`${school}/usage${month ? `?month=${encodeURIComponent(month)}` : ''}`)
 }
 
+// --- Feedback drafts (assessment:assessments:author) ---
+
+export type AIFeedbackDraftStatus = 'Pending' | 'Ready' | 'Failed' | 'Skipped'
+
+export interface AIFeedbackDraft {
+  attemptId: string
+  status: AIFeedbackDraftStatus
+  failureReason: string | null
+  suggestedPassed: boolean | null
+  suggestedScore: number | null
+  feedback: string | null
+  // For the grader only - never shown to the learner.
+  rationale: string | null
+  tier: AITier | null
+  enhancedRequest: boolean
+  usedAt: string | null
+  updatedAt: string
+}
+
+export function getFeedbackDraftStatuses(attemptIds: string[]): Promise<{ attemptId: string; status: AIFeedbackDraftStatus }[]> {
+  return apiFetch(`${school}/feedback-drafts?attemptIds=${attemptIds.join(',')}`)
+}
+
+export function getFeedbackDraft(attemptId: string): Promise<AIFeedbackDraft> {
+  return apiFetch(`${school}/feedback-drafts/${attemptId}`)
+}
+
+// tier 'Enhanced' is "Try a better draft": Enhanced only, never falls back.
+export function regenerateFeedbackDraft(attemptId: string, tier?: AITier): Promise<AIFeedbackDraft> {
+  return apiFetch(`${school}/feedback-drafts/${attemptId}/regenerate`, {
+    method: 'POST',
+    body: JSON.stringify(tier ? { tier } : {}),
+  })
+}
+
+export function markFeedbackDraftUsed(attemptId: string): Promise<AIFeedbackDraft> {
+  return apiFetch(`${school}/feedback-drafts/${attemptId}/used`, { method: 'POST' })
+}
+
 // --- Platform model registry (ai:models:manage) ---
 
 export type AIProviderStatus = 'Active' | 'Disabled'
