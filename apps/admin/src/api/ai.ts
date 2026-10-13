@@ -132,6 +132,38 @@ export function markFeedbackDraftUsed(attemptId: string): Promise<AIFeedbackDraf
   return apiFetch(`${school}/feedback-drafts/${attemptId}/used`, { method: 'POST' })
 }
 
+// --- Authoring help (drafts only; nothing is saved) ---
+
+export type QuizDifficulty = 'Mixed' | 'Easy' | 'Medium' | 'Hard'
+export type CopyTone = 'Friendly' | 'Formal'
+
+export interface AIQuizCandidate {
+  text: string
+  options: string[]
+  correctOptionIndex: number
+  // For the author only: why the answer is right.
+  explanation: string
+  sourceLessonId: string
+  suggestedTags: string[]
+}
+
+export function draftQuizQuestions(request: {
+  lessonIds: string[]
+  count: number
+  difficulty: QuizDifficulty
+  tier?: AITier
+}): Promise<{ candidates: AIQuizCandidate[]; dropped: number; tier: AITier }> {
+  return apiFetch(`${school}/authoring/quiz-questions`, { method: 'POST', body: JSON.stringify(request) })
+}
+
+export function draftCourseCopy(courseId: string, tone: CopyTone, tier?: AITier): Promise<{ description: string; longDescription: string; tier: AITier }> {
+  return apiFetch(`${school}/authoring/course-copy`, { method: 'POST', body: JSON.stringify({ courseId, tone, tier }) })
+}
+
+export function draftLessonSummary(lessonId: string, tier?: AITier): Promise<{ summary: string; keyPoints: string[]; tier: AITier }> {
+  return apiFetch(`${school}/authoring/lesson-summary`, { method: 'POST', body: JSON.stringify({ lessonId, tier }) })
+}
+
 // --- Platform model registry (ai:models:manage) ---
 
 export type AIProviderStatus = 'Active' | 'Disabled'

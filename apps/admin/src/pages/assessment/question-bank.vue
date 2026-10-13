@@ -2,7 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { toast } from 'vue-sonner'
 import { RaCard, RaChip } from '@roboacademy/ui'
-import { MoreVertical, Plus, Upload } from 'lucide-vue-next'
+import { MoreVertical, Plus, Sparkles, Upload } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import Input from '@/components/ui/input.vue'
 import Label from '@/components/ui/label.vue'
@@ -24,6 +24,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import CopyToTenantsDialog from '@/components/CopyToTenantsDialog.vue'
 import ImportQuestionBankFromTenantDialog from '@/components/ImportQuestionBankFromTenantDialog.vue'
+import AIQuizGeneratorDialog from '@/components/AIQuizGeneratorDialog.vue'
+import { useAIAvailability } from '@/composables/useAIAvailability'
 import { ApiError } from '@/api/client'
 import { usePagedList } from '@/composables/usePagedList'
 import { useCanCopyCrossTenant } from '@/composables/useCanCopyCrossTenant'
@@ -38,6 +40,10 @@ import {
 } from '@/api/assessment'
 
 const canCopyCrossTenant = useCanCopyCrossTenant()
+
+// AI question drafts, shown only when the school's plan and settings allow authoring help.
+const aiAvailability = useAIAvailability()
+const aiGeneratorOpen = ref(false)
 
 const {
   items: bankItems,
@@ -211,6 +217,9 @@ const importDialogOpen = ref(false)
         <Button v-if="canCopyCrossTenant" variant="outline" @click="importDialogOpen = true">
           <Upload :size="14" /> Import from tenant…
         </Button>
+        <Button v-if="aiAvailability.feature('Authoring')?.available" variant="outline" @click="aiGeneratorOpen = true">
+          <Sparkles :size="14" /> Generate with AI
+        </Button>
         <Button @click="openCreate">
           <Plus :size="14" /> Add Question
         </Button>
@@ -367,5 +376,6 @@ const importDialogOpen = ref(false)
     />
 
     <ImportQuestionBankFromTenantDialog v-model:open="importDialogOpen" @imported="load" />
+    <AIQuizGeneratorDialog v-model:open="aiGeneratorOpen" @saved="load" />
   </div>
 </template>
