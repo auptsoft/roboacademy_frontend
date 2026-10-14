@@ -281,6 +281,20 @@ export function createAIModel(request: {
   return apiFetch(`${platform}/models`, { method: 'POST', body: JSON.stringify(request) })
 }
 
+// Display name and list prices only: model ID, provider and kind identify the model - add a new
+// one to change those.
+export function updateAIModel(
+  modelId: string,
+  request: { displayName: string; inputPricePerMillion: number | null; outputPricePerMillion: number | null },
+): Promise<AIModel> {
+  return apiFetch(`${platform}/models/${modelId}`, { method: 'PUT', body: JSON.stringify(request) })
+}
+
+// Refused (409) while any tier still points at the model, including as its rollback target.
+export function deleteAIModel(modelId: string): Promise<void> {
+  return apiFetch(`${platform}/models/${modelId}`, { method: 'DELETE' })
+}
+
 export function checkAIModel(modelId: string): Promise<AIModel> {
   return apiFetch(`${platform}/models/${modelId}/check`, { method: 'POST' })
 }

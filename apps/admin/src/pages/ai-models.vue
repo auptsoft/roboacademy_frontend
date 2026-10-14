@@ -2,11 +2,18 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { toast } from 'vue-sonner'
 import { RaCard, RaChip, formatDate } from '@roboacademy/ui'
-import { Activity, Plus } from 'lucide-vue-next'
+import { Activity, Loader2, MoreVertical, Plus } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import Input from '@/components/ui/input.vue'
 import Label from '@/components/ui/label.vue'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import TenantMultiSelect from '@/components/TenantMultiSelect.vue'
 import { ApiError } from '@/api/client'
 import type { Tenant } from '@/api/tenancy'
@@ -14,6 +21,7 @@ import {
   checkAIModel,
   createAIModel,
   createAIProvider,
+  deleteAIModel,
   endAITierTrial,
   listAIModels,
   listAIProviders,
@@ -24,6 +32,7 @@ import {
   runAIHealthCheck,
   setAITierPrimary,
   startAITierTrial,
+  updateAIModel,
   updateAIProvider,
   type AIHealthCheckResult,
   type AIModel,
@@ -57,6 +66,10 @@ async function load() {
 
 onMounted(load)
 
+// Same ⋮ trigger as the Plans list.
+const menuTriggerClass =
+  'inline-flex size-9 items-center justify-center rounded-none border border-transparent bg-transparent text-(--fg-3) outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-50'
+
 const selectClass =
   'h-9 rounded-(--ra-md) border border-(--line-2) bg-(--bg-3) px-2.5 text-sm text-(--fg-2) outline-none'
 
@@ -85,14 +98,16 @@ function statusTone(status: string): 'info' | 'neutral' {
 
 const pending = ref(false)
 
-async function run<T>(action: () => Promise<T>, success: string) {
+async function run<T>(action: () => Promise<T>, success: string): Promise<boolean> {
   pending.value = true
   try {
     await action()
     toast.success(success)
     await load()
+    return true
   } catch (error) {
     toast.error(error instanceof ApiError ? error.message : 'Something went wrong.')
+    return false
   } finally {
     pending.value = false
   }
@@ -213,12 +228,52 @@ function openModelDialog() {
 
 const checking = ref<string | null>(null)
 
-async function submitModel() {
-  // v-model on a type="number" input yields a number once the field is typed in, '' when empty.
-  const toPrice = (value: string | number) => {
-    const text = String(value).trim()
-    return text === '' ? null : Number(text)
+// v-model on a type="number" input yields a number once typed in, '' when empty.
+function toPrice(value: string | number): number | null {
+  const text = String(value).trim()
+  return text === '' ? null : Number(text)
+}
+
+// --- Edit: display name and prices only ---
+const editDialog = reactive({
+  open: false,
+  model: null as AIModel | null,
+  displayName: '',
+  inputPrice: '' as string | number,
+  outputPrice: '' as string | number,
+})
+
+function openEditDialog(model: AIModel) {
+  Object.assign(editDialog, {
+    open: true,
+    model,
+    displayName: model.displayName,
+    inputPrice: model.inputPricePerMillion ?? '',
+    outputPrice: model.outputPricePerMillion ?? '',
+  })
+}
+
+async function submitEdit() {
+  const model = editDialog.model
+  if (!model) return
+  const saved = await run(
+    () => updateAIModel(model.id, {
+      displayName: editDialog.displayName.trim() || model.modelId,
+      inputPricePerMillion: toPrice(editDialog.inputPrice),
+      outputPricePerMillion: toPrice(editDialog.outputPrice),
+    }),
+    'Model updated.',
+  )
+  if (saved) editDialog.open = false
+}
+
+function confirmDelete(model: AIModel) {
+  if (window.confirm(`Delete ${model.displayName}? This can't be undone. Past usage keeps its name in reports.`)) {
+    void run(() => deleteAIModel(model.id), 'Model deleted.')
   }
+}
+
+async function submitModel() {
   checking.value = 'new'
   try {
     const created = await createAIModel({
@@ -385,13 +440,25 @@ async function submitHealthCheck() {
             </p>
             <p v-if="model.status === 'Failed'" class="m-0 mt-1 text-xs text-(--danger)">{{ failedChecks(model) }}</p>
           </div>
+          <span v-if="checking === model.id" class="inline-flex items-center gap-1.5 text-xs text-(--fg-3)">
+            <Loader2 :size="12" class="animate-spin" /> Checking…
+          </span>
           <RaChip :tone="statusTone(model.status)">{{ model.status }}</RaChip>
-          <div v-if="model.status !== 'Retired'" class="flex gap-2">
-            <Button size="sm" variant="outline" :disabled="checking !== null" @click="recheck(model)">
-              {{ checking === model.id ? 'Checking…' : 'Run checks' }}
-            </Button>
-            <Button size="sm" variant="ghost" :disabled="pending" @click="confirmRetire(model)">Retire</Button>
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger :class="menuTriggerClass" :disabled="pending || checking !== null">
+              <MoreVertical :size="16" />
+              <span class="sr-only">Actions for {{ model.displayName }}</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem @select="openEditDialog(model)">Edit</DropdownMenuItem>
+              <template v-if="model.status !== 'Retired'">
+                <DropdownMenuItem @select="recheck(model)">Run checks</DropdownMenuItem>
+                <DropdownMenuItem @select="confirmRetire(model)">Retire</DropdownMenuItem>
+              </template>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" @select="confirmDelete(model)">Delete</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </RaCard>
 
@@ -419,7 +486,15 @@ async function submitHealthCheck() {
           </div>
           <RaChip :tone="statusTone(provider.status)">{{ provider.status }}</RaChip>
           <span class="text-xs text-(--fg-3)">{{ provider.hasApiKey ? 'Key set' : 'No key' }}</span>
-          <Button size="sm" variant="outline" @click="openProviderDialog(provider)">Edit</Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger :class="menuTriggerClass" :disabled="pending">
+              <MoreVertical :size="16" />
+              <span class="sr-only">Actions for {{ provider.name }}</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem @select="openProviderDialog(provider)">Edit</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </RaCard>
     </template>
@@ -533,6 +608,52 @@ async function submitHealthCheck() {
           </div>
           <DialogFooter>
             <Button variant="outline" type="button" @click="providerDialog.open = false">Cancel</Button>
+            <Button type="submit" :disabled="pending">Save</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Edit model dialog -->
+    <Dialog v-model:open="editDialog.open">
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit model</DialogTitle>
+          <DialogDescription>
+            Name and list prices only. To use a different model ID, provider or kind, add a new model - it gets its own checks.
+          </DialogDescription>
+        </DialogHeader>
+        <form v-if="editDialog.model" class="flex flex-col gap-4" @submit.prevent="submitEdit">
+          <dl class="m-0 grid grid-cols-3 gap-3 text-sm">
+            <div>
+              <dt class="text-xs text-(--fg-3)">Model ID</dt>
+              <dd class="m-0 mt-0.5 font-mono text-[13px] text-(--fg-1)">{{ editDialog.model.modelId }}</dd>
+            </div>
+            <div>
+              <dt class="text-xs text-(--fg-3)">Provider</dt>
+              <dd class="m-0 mt-0.5 text-(--fg-1)">{{ editDialog.model.providerName }}</dd>
+            </div>
+            <div>
+              <dt class="text-xs text-(--fg-3)">Kind</dt>
+              <dd class="m-0 mt-0.5 text-(--fg-1)">{{ editDialog.model.kind }}</dd>
+            </div>
+          </dl>
+          <div class="flex flex-col gap-1.5">
+            <Label for="edit-model-name">Display name</Label>
+            <Input id="edit-model-name" v-model="editDialog.displayName" required />
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="flex flex-col gap-1.5">
+              <Label for="edit-model-in">Input $ / 1M tokens</Label>
+              <Input id="edit-model-in" v-model="editDialog.inputPrice" type="number" min="0" step="any" />
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <Label for="edit-model-out">Output $ / 1M tokens</Label>
+              <Input id="edit-model-out" v-model="editDialog.outputPrice" type="number" min="0" step="any" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" type="button" @click="editDialog.open = false">Cancel</Button>
             <Button type="submit" :disabled="pending">Save</Button>
           </DialogFooter>
         </form>
