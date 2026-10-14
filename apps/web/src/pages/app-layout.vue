@@ -2,6 +2,7 @@
 import AppTopBar from '@/components/layout/AppTopBar.vue'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
 import AppBottomNav from '@/components/layout/AppBottomNav.vue'
+import AssistantLauncher from '@/components/assistant/AssistantLauncher.vue'
 import { onMounted, provide } from 'vue'
 
 import { getTenantId } from '@/api/client'
@@ -52,5 +53,6 @@ onMounted(async () => {
       </footer>
     </div>
     <AppBottomNav />
+    <AssistantLauncher />
   </div>
 </template>

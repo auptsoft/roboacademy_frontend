@@ -3,6 +3,8 @@ import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Cpu, HelpCircle } from 'lucide-vue-next'
 import { navFor } from './nav-items'
+import { useAIAvailability } from '@/composables/useAIAvailability'
+import { useAssistant } from '@/composables/useAssistant'
 import type { TenantBranding } from '@/api/tenancy'
 
 const route = useRoute()
@@ -13,6 +15,9 @@ const props = defineProps<{
 }>()
 
 const items = computed(() => navFor(props.branding))
+
+const { assistantAvailable } = useAIAvailability()
+const { openAssistant } = useAssistant()
 
 function isActive(path: string) {
   if (path === '/app') return route.path === '/app'
@@ -52,7 +57,23 @@ function isActive(path: string) {
         <span class="pointer-events-none absolute -bottom-12 -right-10 w-32 h-32 rounded-full bg-white/5" />
         <div class="relative text-base font-semibold">Help Center</div>
         <p class="relative mt-2 mb-0 text-[13px] leading-relaxed text-(--brand-navy-muted)">
-          Having trouble? Reach out to your {{ props.branding.name || 'academy' }} administrator for help.
+          Step-by-step guides to using the app.
+        </p>
+        <button
+          class="relative mt-4 w-full rounded-(--ra-md) border-0 bg-(--brand-sand) px-4 py-2.5 text-sm font-semibold text-(--brand-sand-fg) cursor-pointer transition-opacity duration-(--dur-1) ease-(--ease-out) hover:opacity-90"
+          @click="router.push('/app/help')"
+        >
+          Browse help
+        </button>
+        <button
+          v-if="assistantAvailable"
+          class="relative mt-2 w-full rounded-(--ra-md) border border-white/25 bg-transparent px-4 py-2.5 text-sm font-semibold text-(--brand-navy-fg) cursor-pointer transition-colors duration-(--dur-1) ease-(--ease-out) hover:bg-white/10"
+          @click="openAssistant()"
+        >
+          Ask the assistant
+        </button>
+        <p class="relative mt-3 mb-0 text-xs leading-relaxed text-(--brand-navy-muted)">
+          Still stuck? Contact your {{ props.branding.name || 'academy' }} administrator.
         </p>
       </div>
       <span class="absolute top-10 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-(--brand-sand) border-4 border-(--surface) flex items-center justify-center text-(--brand-sand-fg)">

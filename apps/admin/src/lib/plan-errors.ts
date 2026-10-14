@@ -41,6 +41,8 @@ export const FEATURE_LABELS: Record<string, string> = {
   ai_authoring_enhanced: 'Enhanced AI authoring help',
   ai_tutor: 'The AI lesson tutor',
   ai_tutor_enhanced: 'The Enhanced AI lesson tutor',
+  ai_assistant: 'The AI app assistant',
+  ai_assistant_enhanced: 'The Enhanced AI app assistant',
   max_ai_enhanced_tokens_per_month: 'Enhanced AI',
 }
 

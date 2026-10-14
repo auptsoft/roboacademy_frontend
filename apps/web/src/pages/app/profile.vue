@@ -93,7 +93,7 @@ const inputClass = 'w-full rounded-(--ra-md) border border-(--line-2) bg-(--bg-1
         </RaButton>
         <RaButton variant="secondary" @click="handleLogout">
           <template #icon><LogOut :size="14" /></template>
-          Logout
+          Log Out
         </RaButton>
       </div>
     </RaCard>

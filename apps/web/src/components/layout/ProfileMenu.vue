@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { inject } from 'vue'
 import { useRouter } from 'vue-router'
-import { User, BarChart3, Award, Settings, LogOut, ChevronDown } from 'lucide-vue-next'
+import { User, BarChart3, Award, Settings, LogOut, ChevronDown, HelpCircle } from 'lucide-vue-next'
 import {
   DropdownMenuRoot,
   DropdownMenuTrigger,
@@ -77,11 +77,18 @@ function handleLogout() {
           Settings
         </DropdownMenuItem>
         <DropdownMenuItem
+          class="flex items-center gap-2.5 px-2.5 py-2.5 rounded-(--ra-md) cursor-pointer text-sm font-medium text-(--fg-2) outline-none transition-colors duration-(--dur-1) ease-(--ease-out) data-[highlighted]:bg-(--bg-3) data-[highlighted]:text-(--fg-1)"
+          @select="router.push('/app/help')"
+        >
+          <HelpCircle :size="16" />
+          Help
+        </DropdownMenuItem>
+        <DropdownMenuItem
           class="flex items-center gap-2.5 px-2.5 py-2.5 rounded-(--ra-md) cursor-pointer text-sm font-medium text-(--fg-2) outline-none transition-colors duration-(--dur-1) ease-(--ease-out) data-[highlighted]:bg-[rgba(239,68,68,0.10)] data-[highlighted]:text-(--danger)"
           @select="handleLogout"
         >
           <LogOut :size="16" />
-          Logout
+          Log Out
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenuPortal>

@@ -2,7 +2,7 @@ import { apiFetch } from '@/api/client'
 
 // --- Availability (any signed-in user) ---
 
-export type AIFeature = 'FeedbackDrafts' | 'Authoring' | 'Tutor'
+export type AIFeature = 'FeedbackDrafts' | 'Authoring' | 'Tutor' | 'Assistant'
 export type AITier = 'Basic' | 'Enhanced'
 
 export interface AIFeatureAvailability {

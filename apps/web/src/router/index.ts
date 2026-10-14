@@ -118,6 +118,16 @@ const router = createRouter({
                 {
                     path: 'settings',
                     component: () => import("@/pages/app/settings.vue")
+                },
+
+                {
+                    path: 'help',
+                    component: () => import("@/pages/app/help.vue")
+                },
+
+                {
+                    path: 'help/:slug',
+                    component: () => import("@/pages/app/help-article.vue")
                 }
             ]
         },
