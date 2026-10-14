@@ -67,7 +67,7 @@ function endSessionForLockedSchool(): void {
 
 const AI_ERROR_CODES = ['ai_disabled', 'ai_feature_cap_reached', 'ai_unavailable']
 
-function planErrorCodeOf(data: unknown): string | undefined {
+export function planErrorCodeOf(data: unknown): string | undefined {
   if (data && typeof data === 'object' && 'code' in data) {
     const { code, key } = data as { code: unknown; key?: unknown }
     if (code === 'limit_exceeded' && typeof key === 'string' && key.startsWith('max_ai_')) return 'ai_limit_exceeded'
@@ -143,6 +143,19 @@ async function apiFetchEnvelope<T>(path: string, init: RequestInit = {}): Promis
   }
 
   return (envelope as ApiEnvelope<T>) ?? { isSuccessful: true, message: '', data: null }
+}
+
+// For callers that read the response body themselves (e.g. the AI tutor's event stream): the
+// same base URL, tenant and auth headers apiFetch uses.
+export function apiUrl(path: string): string {
+  return `${API_BASE_URL}${path}`
+}
+
+export function apiHeaders(): Headers {
+  const headers = new Headers({ 'X-Tenant-Id': getTenantId(), 'Content-Type': 'application/json' })
+  const token = getAccessToken()
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+  return headers
 }
 
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {

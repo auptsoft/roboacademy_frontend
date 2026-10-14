@@ -39,6 +39,8 @@ export const FEATURE_LABELS: Record<string, string> = {
   ai_feedback_drafts_enhanced: 'Enhanced AI feedback drafts',
   ai_authoring: 'AI authoring help',
   ai_authoring_enhanced: 'Enhanced AI authoring help',
+  ai_tutor: 'The AI lesson tutor',
+  ai_tutor_enhanced: 'The Enhanced AI lesson tutor',
   max_ai_enhanced_tokens_per_month: 'Enhanced AI',
 }
 

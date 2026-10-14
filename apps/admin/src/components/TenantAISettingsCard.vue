@@ -12,10 +12,13 @@ import {
   acceptAITerms,
   getAISettings,
   getAIUsage,
+  getTutorIndexStatus,
+  rebuildTutorIndex,
   updateAISettings,
   type AIFeature,
   type AISettings,
   type AIUsage,
+  type TutorIndexStatus,
 } from '@/api/ai'
 import { aiUsageBarClass, usesNoun } from '@/lib/ai'
 
@@ -76,6 +79,38 @@ async function loadUsage() {
 
 onMounted(load)
 watch(month, loadUsage)
+
+// --- Tutor index: how much course content the tutor can search ---
+const tutorIndex = ref<TutorIndexStatus | null>(null)
+const rebuilding = ref(false)
+const tutorOn = computed(() =>
+  !!settings.value?.enabled && !!settings.value.features.find((f) => f.feature === 'Tutor' && f.includedInPlan && f.enabledBySchool))
+
+async function loadTutorIndex() {
+  if (!tutorOn.value) {
+    tutorIndex.value = null
+    return
+  }
+  try {
+    tutorIndex.value = await getTutorIndexStatus()
+  } catch {
+    tutorIndex.value = null
+  }
+}
+
+watch(tutorOn, loadTutorIndex)
+
+async function submitRebuild() {
+  rebuilding.value = true
+  try {
+    await rebuildTutorIndex()
+    toast.success('Re-indexing started. It can take a few minutes.')
+  } catch (error) {
+    toast.error(error instanceof ApiError ? error.message : 'Failed to start re-indexing.')
+  } finally {
+    rebuilding.value = false
+  }
+}
 
 const status = computed(() => {
   if (!settings.value) return null
@@ -238,6 +273,37 @@ const shownTiers = computed(() => (usage.value?.tiers ?? []).filter((t) => t.lim
               <Button type="submit" :disabled="saving">{{ saving ? 'Saving…' : 'Save AI Settings' }}</Button>
             </div>
           </form>
+
+          <!-- Tutor index -->
+          <div v-if="tutorIndex" class="flex flex-col gap-3 border-b border-(--line-1) py-5 px-6">
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <h4 class="m-0 text-sm font-semibold text-(--fg-1)">Tutor knowledge</h4>
+                <p class="m-0 mt-1 text-xs text-(--fg-3)">
+                  Lessons with notes the tutor can search. Conversations are kept for 90 days, and teachers can't read them.
+                </p>
+              </div>
+              <Button size="sm" variant="outline" :disabled="rebuilding" @click="submitRebuild">
+                {{ rebuilding ? 'Starting…' : 'Rebuild' }}
+              </Button>
+            </div>
+            <p v-if="!tutorIndex.embeddingModelConfigured" class="m-0 text-xs text-(--fg-3)">
+              Course search isn't set up on the platform yet, so the tutor answers from the open lesson only.
+            </p>
+            <p v-else-if="tutorIndex.courses.length === 0" class="m-0 text-xs text-(--fg-3)">No lessons have notes yet.</p>
+            <ul v-else class="m-0 flex list-none flex-col p-0">
+              <li
+                v-for="course in tutorIndex.courses"
+                :key="course.courseId"
+                class="flex items-center justify-between border-b border-(--line-1) py-2 text-sm last:border-b-0"
+              >
+                <span class="text-(--fg-1)">{{ course.title }}</span>
+                <span :class="course.lessonsIndexed < course.lessonsWithNotes ? 'text-(--warning)' : 'text-(--fg-3)'">
+                  {{ course.lessonsIndexed }} / {{ course.lessonsWithNotes }} lessons
+                </span>
+              </li>
+            </ul>
+          </div>
 
           <!-- Usage -->
           <div v-if="usage" class="flex flex-col gap-4 py-5 px-6">

@@ -6,12 +6,14 @@ import {
   CheckCircle2, PlayCircle, Lock, ChevronRight, ChevronDown, Layers, List,
   Loader2, AlertTriangle, Compass, ArrowRight, ExternalLink,
   Video, BookOpen, Puzzle, Cpu, FileText,
-  ClipboardCheck, PenLine, UploadCloud, Paperclip,
+  ClipboardCheck, PenLine, UploadCloud, Paperclip, Sparkles,
 } from 'lucide-vue-next'
 import { ApiError } from '@/api/client'
 import { getCourse, getCourseResumePoint, recordLessonProgress, getLessonPlaybackUrl, combinedProgressPercent, type CourseDetail, type CourseLessonDetail, type CourseResumePoint } from '@/api/learning'
 import { getLabSession, requestLabSession } from '@/api/robotics-lab'
 import SimulationFrame from '@/components/simulation/SimulationFrame.vue'
+import TutorPanel from '@/components/tutor/TutorPanel.vue'
+import { useAIAvailability } from '@/composables/useAIAvailability'
 import { renderRichText } from '@/lib/rich-text'
 import {
   listModuleAssessments, getAssessment, listMyAttempts, startAttempt, submitAttempt, getAttemptFileUploadUrl,
@@ -200,6 +202,15 @@ const simResult = ref<{ score: number; passed: boolean } | null>(null)
 const lessonType = computed(() => selectedFlat.value?.lesson.type?.toLowerCase() ?? '')
 
 const isSimulationLesson = computed(() => lessonType.value === 'simulation')
+
+// ── AI tutor ─────────────────────────────────────────────────────────────────
+// Offered on non-simulation lessons when the school's plan and settings include it (simulation
+// lessons get their own hints later). The panel owns its conversation; this page only opens it and
+// follows citation clicks to the cited lesson.
+const aiAvailability = useAIAvailability()
+const tutorOpen = ref(false)
+const showTutorButton = computed(() =>
+  aiAvailability.tutorAvailable.value && contentKind.value === 'lesson' && !!selectedFlat.value && !isSimulationLesson.value)
 
 const simButtonLabel = computed(() => {
   if (simState.value === 'submitting') return 'Submitting…'
@@ -658,6 +669,14 @@ watch(() => route.params.id, load, { immediate: true })
           <RaChip tone="info">{{ selectedFlat.moduleTitle }}</RaChip>
           <span v-if="course.level" class="inline-flex items-center gap-1.5 text-xs text-(--fg-3)"><Layers :size="12" /> {{ course.level }}</span>
           <RaChip :tone="selectedFlat.lesson.isRequired ? 'student' : 'neutral'">{{ selectedFlat.lesson.isRequired ? 'Required' : 'Optional' }}</RaChip>
+          <button
+            v-if="showTutorButton"
+            type="button"
+            class="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-(--ra-md) border border-(--line-2) bg-(--bg-2) px-3 py-1.5 text-[13px] font-semibold text-(--fg-1) hover:border-(--brand-blue)"
+            @click="tutorOpen = true"
+          >
+            <Sparkles :size="14" class="text-(--brand-blue)" /> Ask the tutor
+          </button>
         </div>
 
         <h1 class="m-0 text-[32px] font-bold text-(--fg-1) tracking-[-0.01em]">{{ String(selectedFlat.index + 1).padStart(2, '0') }}. {{ selectedFlat.lesson.title }}</h1>
@@ -900,4 +919,12 @@ watch(() => route.params.id, load, { immediate: true })
       <p v-else class="m-0 text-[13px] text-(--fg-3)">This course has no lessons yet.</p>
     </div>
   </div>
+
+  <TutorPanel
+    v-if="course"
+    v-model:open="tutorOpen"
+    :course-id="course.id"
+    :lesson-id="selectedFlat?.lesson.id ?? null"
+    @open-lesson="selectLesson"
+  />
 </template>

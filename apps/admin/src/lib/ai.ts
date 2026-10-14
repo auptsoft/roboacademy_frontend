@@ -33,6 +33,14 @@ export const AI_FEATURES: AIPlanFeature[] = [
     useNoun: ['authoring request', 'authoring requests'],
     defaultTokensPerUse: 12_000,
   },
+  {
+    feature: 'Tutor',
+    label: 'Lesson tutor',
+    key: 'ai_tutor',
+    enhancedKey: 'ai_tutor_enhanced',
+    useNoun: ['tutor message', 'tutor messages'],
+    defaultTokensPerUse: 4_400,
+  },
 ]
 
 export const AI_BASIC_TOKENS_KEY = 'max_ai_basic_tokens_per_month'

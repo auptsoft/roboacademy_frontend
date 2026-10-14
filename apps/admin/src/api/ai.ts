@@ -2,7 +2,7 @@ import { apiFetch } from '@/api/client'
 
 // --- Availability (any signed-in user) ---
 
-export type AIFeature = 'FeedbackDrafts' | 'Authoring'
+export type AIFeature = 'FeedbackDrafts' | 'Authoring' | 'Tutor'
 export type AITier = 'Basic' | 'Enhanced'
 
 export interface AIFeatureAvailability {
@@ -162,6 +162,21 @@ export function draftCourseCopy(courseId: string, tone: CopyTone, tier?: AITier)
 
 export function draftLessonSummary(lessonId: string, tier?: AITier): Promise<{ summary: string; keyPoints: string[]; tier: AITier }> {
   return apiFetch(`${school}/authoring/lesson-summary`, { method: 'POST', body: JSON.stringify({ lessonId, tier }) })
+}
+
+// --- Tutor index (ai:settings:manage) ---
+
+export interface TutorIndexStatus {
+  embeddingModelConfigured: boolean
+  courses: { courseId: string; title: string; lessonsWithNotes: number; lessonsIndexed: number }[]
+}
+
+export function getTutorIndexStatus(): Promise<TutorIndexStatus> {
+  return apiFetch(`${school}/tutor-index`)
+}
+
+export function rebuildTutorIndex(): Promise<void> {
+  return apiFetch(`${school}/tutor-index/rebuild`, { method: 'POST' })
 }
 
 // --- Platform model registry (ai:models:manage) ---
