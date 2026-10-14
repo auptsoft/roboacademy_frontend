@@ -39,6 +39,7 @@ import {
 } from '@/api/identity'
 import PlanLimitBanner from '@/components/PlanLimitBanner.vue'
 import { useTenantUsage } from '@/composables/useTenantUsage'
+import { hasPermission } from '@/store/auth'
 
 const router = useRouter()
 const tenantUsage = useTenantUsage()
@@ -62,6 +63,10 @@ const {
   errorMessage: 'Failed to load classes.',
 })
 
+// Class managers (school admins) run classes; teachers and teaching assistants only see the
+// classes they're staff on, read-only (the API returns just those).
+const canManage = hasPermission('identity:classes:manage')
+
 const departments = ref<AdminDepartment[]>([])
 
 async function loadDepartments() {
@@ -78,7 +83,7 @@ const rowClass =
 
 onMounted(() => {
   load()
-  loadDepartments()
+  if (canManage) loadDepartments()
 })
 
 // --- Create class ---
@@ -239,10 +244,12 @@ async function removeDepartment(department: AdminDepartment) {
       <div>
         <h1 class="m-0 text-[32px] font-bold tracking-[-0.01em] text-(--fg-1)">Classes</h1>
         <p class="mt-1.5 text-sm text-(--fg-3)">
-          Organize students and staff into classes, then assign courses and learning paths to a whole class.
+          {{ canManage
+            ? 'Organize students and staff into classes, then assign courses and learning paths to a whole class.'
+            : 'The classes you teach: their students, assigned courses and progress.' }}
         </p>
       </div>
-      <div class="flex gap-2.5 max-sm:flex-col">
+      <div v-if="canManage" class="flex gap-2.5 max-sm:flex-col">
         <Button variant="outline" @click="openDepartmentsDialog">
           <FolderCog :size="14" /> Manage Departments
         </Button>
@@ -302,14 +309,16 @@ async function removeDepartment(department: AdminDepartment) {
               <span class="sr-only">Open actions</span>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
-              <DropdownMenuItem @select="openEdit(cls)">Edit</DropdownMenuItem>
+              <DropdownMenuItem v-if="canManage" @select="openEdit(cls)">Edit</DropdownMenuItem>
               <DropdownMenuItem @select="openClass(cls)">Roster</DropdownMenuItem>
               <DropdownMenuItem @select="openClass(cls, 'courses')">Courses & Paths</DropdownMenuItem>
               <DropdownMenuItem @select="openClass(cls, 'progress')">Progress</DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" :disabled="deletingClassId === cls.classId" @select="removeClass(cls)">
-                Delete
-              </DropdownMenuItem>
+              <template v-if="canManage">
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive" :disabled="deletingClassId === cls.classId" @select="removeClass(cls)">
+                  Delete
+                </DropdownMenuItem>
+              </template>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

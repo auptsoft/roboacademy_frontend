@@ -583,8 +583,8 @@ const logClass: Record<string, string> = {
         <div class="mt-12 pt-5 border-t border-(--line-1) flex justify-between items-center flex-wrap gap-4 font-mono text-[11px] text-(--fg-4) tracking-[0.06em] max-[480px]:flex-col max-[480px]:items-start max-[480px]:gap-2.5">
           <div>© 2026 ROBOACADEMY · PROFESSIONAL ROBOTICS LMS</div>
           <div class="flex gap-5.5 max-[480px]:flex-wrap">
-            <span>PRIVACY</span>
-            <span>TERMS</span>
+            <RouterLink to="/privacy" class="text-inherit no-underline hover:text-(--fg-2)">PRIVACY</RouterLink>
+            <RouterLink to="/terms" class="text-inherit no-underline hover:text-(--fg-2)">TERMS</RouterLink>
             <span>SECURITY</span>
             <span>V 4.2.1</span>
           </div>

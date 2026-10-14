@@ -103,7 +103,7 @@ watch([activeTab, search], () => { fetchPage(true) }, { immediate: true })
     <!-- Header -->
     <div>
       <h1 class="m-0 text-[28px] font-semibold text-(--heading) tracking-[-0.01em] max-sm:text-2xl">Explore</h1>
-      <p class="mt-2 mb-0 text-sm text-(--fg-3)">Browse courses and learning paths, and enroll in something new.</p>
+      <p class="mt-2 mb-0 text-sm text-(--fg-3)">Browse courses and learning paths, and enrol in something new.</p>
     </div>
 
     <div>

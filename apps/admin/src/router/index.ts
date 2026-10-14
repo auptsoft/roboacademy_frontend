@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { isAuthenticated } from '@/store/auth'
+import { getActiveTenantId, isAuthenticated } from '@/store/auth'
+import { getEnv } from '@/lib/runtime-env'
 import { captureTenantFromQuery } from '@/lib/tenant-from-url'
 
 const router = createRouter({
@@ -125,6 +126,20 @@ const router = createRouter({
         {
           path: 'audit',
           component: () => import('@/pages/audit.vue'),
+        },
+        {
+          path: 'help',
+          component: () => import('@/pages/help/index.vue'),
+        },
+        {
+          path: 'help/:slug',
+          component: () => import('@/pages/help/detail.vue'),
+        },
+        {
+          // A stable address for "your school's setup" (help guides link here); the real page is
+          // per tenant, and follows enterTenant like the School Setup menu entry.
+          path: 'school-setup',
+          redirect: () => `/tenants/${getActiveTenantId() || getEnv('VITE_PLATFORM_TENANT_ID')}`,
         },
       ],
     },

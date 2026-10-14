@@ -118,6 +118,25 @@ async function apiFetchEnvelope<T>(path: string, init: RequestInit = {}): Promis
   return (envelope as ApiEnvelope<T>) ?? { isSuccessful: true, message: '', data: null }
 }
 
+/** For calls that can't go through apiFetch (e.g. reading a streamed response). */
+export function apiUrl(path: string): string {
+  return `${API_BASE_URL}${path}`
+}
+
+/** The headers apiFetch sends: tenant, JSON content type, and the access token. */
+export function apiHeaders(): Headers {
+  const headers = new Headers({ 'X-Tenant-Id': getTenantId(), 'Content-Type': 'application/json' })
+  const token = getAccessToken()
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+  return headers
+}
+
+/** Turns a failed response's envelope into the same ApiError apiFetch throws. */
+export function apiErrorFrom(status: number, envelope: { message?: string; data?: unknown } | null, fallback: string): ApiError {
+  const planError = isPlanErrorDetails(envelope?.data) ? envelope.data : undefined
+  return new ApiError(status, envelope?.message ?? fallback, undefined, planError)
+}
+
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const envelope = await apiFetchEnvelope<T>(path, init)
   return (envelope.data as T) ?? (undefined as T)

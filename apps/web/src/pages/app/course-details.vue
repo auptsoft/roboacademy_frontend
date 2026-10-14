@@ -105,7 +105,7 @@ async function enroll() {
       await checkEnrolment(course.value.id)
     } else if (err instanceof ApiError && err.status === 403) {
       enrollState.value = 'error'
-      enrollError.value = 'This course is only available through your school. Ask your teacher to enroll you.'
+      enrollError.value = 'This course is only available through your school. Ask your teacher to enrol you.'
     } else {
       enrollState.value = 'error'
       enrollError.value = err instanceof ApiError ? err.message : 'Something went wrong.'
@@ -115,7 +115,7 @@ async function enroll() {
 
 async function unenroll() {
   if (!enrolmentId.value) return
-  if (!window.confirm('Unenroll from this course? You can re-enrol later, but you will lose access until then.')) return
+  if (!window.confirm('Unenrol from this course? You can re-enrol later, but you will lose access until then.')) return
   unenrollState.value = 'unenrolling'
   unenrollError.value = ''
   try {
@@ -215,10 +215,10 @@ watch(() => route.params.id, load, { immediate: true })
                 class="mt-2 w-full text-center text-[13px] text-(--fg-3) bg-transparent border-0 cursor-pointer hover:text-(--danger) disabled:opacity-60 disabled:cursor-not-allowed"
                 :disabled="unenrollState === 'unenrolling'"
                 @click="unenroll"
-              >{{ unenrollState === 'unenrolling' ? 'Unenrolling…' : 'Unenroll' }}</button>
+              >{{ unenrollState === 'unenrolling' ? 'Unenrolling…' : 'Unenrol' }}</button>
             </template>
             <RaButton v-else class="w-full justify-center" :disabled="enrollState === 'enrolling'" @click="enroll">
-              {{ enrollState === 'enrolling' ? 'Enrolling…' : 'Enroll Now' }}
+              {{ enrollState === 'enrolling' ? 'Enrolling…' : 'Enrol Now' }}
               <template #icon-right>
                 <Loader2 v-if="enrollState === 'enrolling'" :size="14" class="animate-spin" />
                 <ArrowRight v-else :size="14" />

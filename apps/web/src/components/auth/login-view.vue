@@ -69,7 +69,7 @@ async function submit() {
       <p v-if="errorMessage" class="m-0 text-[13px] text-(--danger)">{{ errorMessage }}</p>
 
       <Button type="submit" class="cursor-pointer mt-1.5 h-auto w-full rounded-(--ra-md) bg-(--brand-blue) py-3 text-sm font-semibold text-(--brand-blue-foreground) hover:bg-(--brand-blue-hover)" :disabled="loading">
-        {{ loading ? 'Logging in…' : 'Login' }}
+        {{ loading ? 'Logging in…' : 'Log In' }}
       </Button>
     </form>
   </div>

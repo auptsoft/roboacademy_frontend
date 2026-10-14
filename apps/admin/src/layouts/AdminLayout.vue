@@ -11,6 +11,7 @@ import AdminNavList from './AdminNavList.vue'
 import BrandMark from '@/components/BrandMark.vue'
 import NotificationBell from '@/components/NotificationBell.vue'
 import SubscriptionBanner from '@/components/SubscriptionBanner.vue'
+import StaffAssistantLauncher from '@/components/StaffAssistantLauncher.vue'
 import { exitTenant, getCurrentUser, getImpersonationTarget } from '@/store/auth'
 
 const router = useRouter()
@@ -102,5 +103,6 @@ async function exitImpersonation() {
         </div>
       </DrawerContent>
     </Drawer>
+    <StaffAssistantLauncher />
   </div>
 </template>

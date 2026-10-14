@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { RaButton, RaChip } from '@roboacademy/ui'
 import { ArrowLeft, History, Loader2, Plus, Send, Sparkles, Square, ThumbsDown, ThumbsUp, Trash2, X } from 'lucide-vue-next'
 import { ApiError } from '@/api/client'
@@ -14,10 +15,10 @@ import {
   type TutorMessage,
   type TutorSource,
 } from '@/api/ai'
-import { formatReply } from '@/lib/tutor-format'
+import { renderChatMarkdown } from '@/lib/chat-markdown'
 
 // The lesson tutor: answers from this course's own notes, citing the lessons it used. Replies are
-// rendered as text (never HTML) because model output is untrusted. While the learner has an
+// model output, so they're rendered through the strict chat Markdown renderer (see chat-markdown). While the learner has an
 // assessment open the tutor gives hints rather than answers - the panel says so.
 
 const props = defineProps<{ courseId: string; lessonId: string | null }>()
@@ -208,6 +209,24 @@ function sourceFor(message: TutorMessage, n: number): TutorSource | undefined {
   return message.sources?.find((s) => s.n === n)
 }
 
+const router = useRouter()
+
+// Citation chips open the cited lesson; app links navigate inside the app.
+function onReplyClick(message: TutorMessage, event: MouseEvent) {
+  const target = event.target as HTMLElement
+  const cite = target.closest<HTMLElement>('[data-cite]')
+  const source = cite ? sourceFor(message, Number(cite.dataset.cite)) : undefined
+  if (source) {
+    emit('openLesson', source.lessonId)
+    return
+  }
+  const link = target.closest<HTMLAnchorElement>('a[data-app-link]')
+  if (link) {
+    event.preventDefault()
+    void router.push(link.getAttribute('href')!)
+  }
+}
+
 function citedSources(message: TutorMessage): TutorSource[] {
   const cited = new Set([...message.content.matchAll(/\[(\d{1,2})\]/g)].map((m) => Number(m[1])))
   return (message.sources ?? []).filter((s) => cited.has(s.n))
@@ -332,32 +351,12 @@ function onKeydown(event: KeyboardEvent) {
         <div v-else class="flex max-w-[92%] flex-col gap-2 self-start">
           <div class="rounded-(--ra-md) border border-(--line-1) bg-(--bg-2) px-3.5 py-2.5 text-sm leading-relaxed text-(--fg-1)">
             <Loader2 v-if="!message.content && streaming" :size="14" class="animate-spin text-(--fg-4)" />
-            <template v-for="(block, b) in formatReply(message.content)" :key="b">
-              <p v-if="block.kind === 'paragraph'" class="m-0 mb-2 last:mb-0">
-                <template v-for="(part, p) in block.parts" :key="p">
-                  <strong v-if="part.kind === 'bold'">{{ part.text }}</strong>
-                  <button
-                    v-else-if="part.kind === 'cite' && sourceFor(message, part.n)"
-                    type="button"
-                    class="mx-0.5 inline-flex cursor-pointer items-center rounded-(--ra-pill) border-0 bg-(--bg-3) px-1.5 align-baseline text-[11px] font-semibold text-(--brand-blue)"
-                    :title="sourceFor(message, part.n)!.lessonTitle"
-                    @click="emit('openLesson', sourceFor(message, part.n)!.lessonId)"
-                  >
-                    {{ part.n }}
-                  </button>
-                  <template v-else-if="part.kind === 'text'">{{ part.text }}</template>
-                </template>
-              </p>
-              <ul v-else class="m-0 mb-2 pl-5 last:mb-0">
-                <li v-for="(item, i) in block.items" :key="i">
-                  <template v-for="(part, p) in item" :key="p">
-                    <strong v-if="part.kind === 'bold'">{{ part.text }}</strong>
-                    <template v-else-if="part.kind === 'text'">{{ part.text }}</template>
-                    <template v-else>[{{ part.n }}]</template>
-                  </template>
-                </li>
-              </ul>
-            </template>
+            <div
+              v-if="message.content"
+              class="chat-text rich-text"
+              @click="onReplyClick(message, $event)"
+              v-html="renderChatMarkdown(message.content)"
+            />
             <p v-if="message.incomplete" class="m-0 mt-1 text-xs text-(--fg-4)">(stopped)</p>
           </div>
 

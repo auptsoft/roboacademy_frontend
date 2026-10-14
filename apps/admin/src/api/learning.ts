@@ -10,9 +10,9 @@ export const LESSON_TYPES: LessonType[] = ['Video', 'Reading', 'Interactive', 'S
 export const COURSE_LEVELS: CourseLevel[] = ['Beginner', 'Intermediate', 'Advanced']
 
 export const COURSE_VISIBILITIES: { value: CourseVisibility; label: string; description: string }[] = [
-  { value: 'Public', label: 'Public', description: 'Every student in the school sees it in the catalog and can enroll themselves.' },
+  { value: 'Public', label: 'Public', description: 'Every student in the school sees it in the catalog and can enrol themselves.' },
   { value: 'ClassesOnly', label: 'Classes only', description: 'Only students in a class this course (or a path containing it) is assigned to can see it.' },
-  { value: 'Hidden', label: 'Hidden', description: 'Not listed for students. They can only get it through an admin or class enrollment.' },
+  { value: 'Hidden', label: 'Hidden', description: 'Not listed for students. They can only get it through an admin or class enrolment.' },
 ]
 
 export function visibilityLabel(visibility: CourseVisibility): string {

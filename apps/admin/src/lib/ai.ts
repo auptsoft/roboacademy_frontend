@@ -41,6 +41,14 @@ export const AI_FEATURES: AIPlanFeature[] = [
     useNoun: ['tutor message', 'tutor messages'],
     defaultTokensPerUse: 4_400,
   },
+  {
+    feature: 'Assistant',
+    label: 'App assistant',
+    key: 'ai_assistant',
+    enhancedKey: 'ai_assistant_enhanced',
+    useNoun: ['assistant question', 'assistant questions'],
+    defaultTokensPerUse: 8_000,
+  },
 ]
 
 export const AI_BASIC_TOKENS_KEY = 'max_ai_basic_tokens_per_month'

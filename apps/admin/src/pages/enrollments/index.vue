@@ -240,7 +240,7 @@ function statusTone(status: string): 'student' | 'info' | 'neutral' {
 <template>
   <div class="flex max-w-(--content-max) mx-auto flex-col gap-7 pt-8 px-8 pb-12 max-sm:gap-5 max-sm:pt-5 max-sm:px-4 max-sm:pb-8">
     <div>
-      <h1 class="m-0 text-[32px] font-bold tracking-[-0.01em] text-(--fg-1)">Enrollments</h1>
+      <h1 class="m-0 text-[32px] font-bold tracking-[-0.01em] text-(--fg-1)">Enrolments</h1>
       <p class="mt-1.5 text-sm text-(--fg-3)">
         {{ mode === 'courses' ? 'Enrol students or whole classes in a course, or withdraw them.' : 'See who has started a learning path.' }}
       </p>
