@@ -912,7 +912,7 @@ async function copyToTenants(targetTenantIds: string[]) {
             variant="outline"
             @click="router.push({ path: '/enrollments', query: { courseId: course.id } })"
           >
-            <UserCheck :size="14" /> Enrollments
+            <UserCheck :size="14" /> Enrolments
           </Button>
           <Button v-if="canCopyCrossTenant" variant="outline" @click="copyDialogOpen = true">
             <Copy :size="14" /> Copy to tenants…

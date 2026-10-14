@@ -1,8 +1,8 @@
-import { apiFetch } from '@/api/client'
+import { apiErrorFrom, apiFetch, apiHeaders, apiUrl } from '@/api/client'
 
 // --- Availability (any signed-in user) ---
 
-export type AIFeature = 'FeedbackDrafts' | 'Authoring' | 'Tutor' | 'Assistant'
+export type AIFeature = 'FeedbackDrafts' | 'Authoring' | 'Tutor' | 'Assistant' | 'StaffAssistant'
 export type AITier = 'Basic' | 'Enhanced'
 
 export interface AIFeatureAvailability {
@@ -329,4 +329,100 @@ export function rollbackAITier(slot: AITierSlot): Promise<AITierAssignment> {
 
 export function runAIHealthCheck(): Promise<AIHealthCheckResult[]> {
   return apiFetch(`${platform}/health-check`, { method: 'POST' })
+}
+
+// --- Staff assistant (AI phase 6) ---
+
+export interface StaffAssistantConversation {
+  id: string
+  title: string | null
+  lastMessageAt: string
+}
+
+export interface StaffAssistantMessage {
+  id: string
+  role: 'User' | 'Assistant'
+  content: string
+  /** For replies: the tools it used. */
+  sources: string[] | null
+  incomplete: boolean
+  helpful: boolean | null
+  createdAt: string
+}
+
+export function startStaffAssistantConversation(): Promise<StaffAssistantConversation> {
+  return apiFetch('/api/ai/staff-assistant/conversations', { method: 'POST', body: JSON.stringify({}) })
+}
+
+export function listStaffAssistantConversations(): Promise<StaffAssistantConversation[]> {
+  return apiFetch('/api/ai/staff-assistant/conversations')
+}
+
+export function getStaffAssistantMessages(conversationId: string): Promise<StaffAssistantMessage[]> {
+  return apiFetch(`/api/ai/staff-assistant/conversations/${conversationId}/messages`)
+}
+
+export function rateStaffAssistantMessage(messageId: string, helpful: boolean): Promise<StaffAssistantMessage> {
+  return apiFetch(`/api/ai/staff-assistant/messages/${messageId}/feedback`, { method: 'POST', body: JSON.stringify({ helpful }) })
+}
+
+export function deleteStaffAssistantConversation(conversationId: string): Promise<void> {
+  return apiFetch(`/api/ai/staff-assistant/conversations/${conversationId}`, { method: 'DELETE' })
+}
+
+export interface StaffAssistantStreamHandlers {
+  /** It's looking something up, e.g. "Checking class progress". */
+  onStatus: (label: string) => void
+  onDelta: (text: string) => void
+  onDone: (done: { messageId: string }) => void
+  onError: (message: string) => void
+}
+
+/**
+ * Asks the staff assistant and reads the answer as it streams (Server-Sent Events). EventSource
+ * can't POST or send an Authorization header, so this reads the fetch body and parses the frames.
+ * Refusals (plan, school switch, allowance, rate limit) arrive first as normal JSON errors.
+ */
+export async function askStaffAssistant(
+  conversationId: string, content: string, page: string | null,
+  handlers: StaffAssistantStreamHandlers, signal: AbortSignal,
+): Promise<void> {
+  const response = await fetch(apiUrl(`/api/ai/staff-assistant/conversations/${conversationId}/messages`), {
+    method: 'POST',
+    headers: apiHeaders(),
+    body: JSON.stringify({ content, page }),
+    signal,
+  })
+  if (!response.ok || !response.body) {
+    const envelope = await response.json().catch(() => null) as { message?: string; data?: unknown } | null
+    throw apiErrorFrom(response.status, envelope, 'The assistant is unavailable right now.')
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  for (;;) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    let boundary = buffer.indexOf('\n\n')
+    while (boundary >= 0) {
+      const frame = buffer.slice(0, boundary)
+      buffer = buffer.slice(boundary + 2)
+      boundary = buffer.indexOf('\n\n')
+
+      let name = 'message'
+      let data = ''
+      for (const line of frame.split('\n')) {
+        if (line.startsWith('event: ')) name = line.slice(7)
+        else if (line.startsWith('data: ')) data += line.slice(6)
+      }
+      if (!data) continue
+      const payload = JSON.parse(data)
+      if (name === 'status') handlers.onStatus(payload.label)
+      else if (name === 'delta') handlers.onDelta(payload.text)
+      else if (name === 'done') handlers.onDone(payload)
+      else if (name === 'error') handlers.onError(payload.message)
+    }
+  }
 }

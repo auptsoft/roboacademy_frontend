@@ -13,6 +13,8 @@ export interface RegisterConfirmRequest {
   password: string
   firstName: string
   lastName: string
+  /** The terms version shown on the sign-up form; the backend rejects anything but the current one. */
+  acceptedTermsVersion: string
 }
 
 export interface RegisterConfirmResponse {
@@ -53,6 +55,9 @@ export interface Me {
   fullName: string
   roles: string[]
   permissions: string[]
+  /** Null until the user accepts; behind currentTermsVersion when the terms have changed since. */
+  acceptedTermsVersion: string | null
+  currentTermsVersion: string
 }
 
 export function getMe(): Promise<Me> {
@@ -63,5 +68,25 @@ export function changePassword(currentPassword: string, newPassword: string): Pr
   return apiFetch<void>('/api/identity/me/change-password', {
     method: 'POST',
     body: JSON.stringify({ currentPassword, newPassword }),
+  })
+}
+
+export type LegalDocumentName = 'terms' | 'privacy'
+
+export interface LegalDocument {
+  document: LegalDocumentName
+  version: string
+  markdown: string
+}
+
+/** The Terms of Service or Privacy Policy. Anonymous, so it works before sign-in. */
+export function getLegalDocument(document: LegalDocumentName): Promise<LegalDocument> {
+  return apiFetch<LegalDocument>(`/api/identity/legal/${document}`)
+}
+
+export function acceptTerms(termsVersion: string): Promise<void> {
+  return apiFetch<void>('/api/identity/me/accept-terms', {
+    method: 'POST',
+    body: JSON.stringify({ termsVersion }),
   })
 }

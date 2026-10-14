@@ -72,9 +72,9 @@ function isActive(path: string) {
         >
           Ask the assistant
         </button>
-        <p class="relative mt-3 mb-0 text-xs leading-relaxed text-(--brand-navy-muted)">
+        <!-- <p class="relative mt-3 mb-0 text-xs leading-relaxed text-(--brand-navy-muted)">
           Still stuck? Contact your {{ props.branding.name || 'academy' }} administrator.
-        </p>
+        </p> -->
       </div>
       <span class="absolute top-10 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-(--brand-sand) border-4 border-(--surface) flex items-center justify-center text-(--brand-sand-fg)">
         <HelpCircle :size="20" />

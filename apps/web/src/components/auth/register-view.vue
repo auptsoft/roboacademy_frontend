@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { Eye, EyeOff } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
-import { registerConfirm, registerStart } from '@/api/identity'
+import { getLegalDocument, registerConfirm, registerStart } from '@/api/identity'
 import { login } from '@/store/auth'
 import { ApiError } from '@/api/client'
 
@@ -17,6 +17,18 @@ const password = ref('')
 const confirmPassword = ref('')
 const showPassword = ref(false)
 const code = ref('')
+const agreedToTerms = ref(false)
+// The version the learner agrees to. Fetched up front so the account records the version that
+// was current when they ticked the box; if this fails, confirm is rejected with a clear message.
+const termsVersion = ref('')
+
+onMounted(async () => {
+  try {
+    termsVersion.value = (await getLegalDocument('terms')).version
+  } catch {
+    // Left empty: the backend refuses the sign-up and explains why.
+  }
+})
 
 const submitting = ref(false)
 const resending = ref(false)
@@ -64,6 +76,7 @@ async function confirmCode() {
       password: password.value,
       firstName: firstName.value,
       lastName: lastName.value,
+      acceptedTermsVersion: termsVersion.value,
     })
     await login(email.value, password.value)
     emit('success')
@@ -124,6 +137,16 @@ const inputClass = 'w-full rounded-(--ra-md) border border-(--line-2) bg-(--bg-1
           :class="inputClass"
         >
         <p v-if="!passwordsMatch" class="-mt-2 text-[11px] text-(--danger)">Passwords do not match.</p>
+
+        <label class="flex items-start gap-2.5 text-xs leading-relaxed text-(--fg-3)">
+          <input v-model="agreedToTerms" type="checkbox" required class="mt-0.5 size-4 shrink-0 accent-(--brand-blue)">
+          <span>
+            I agree to the
+            <a href="/terms" target="_blank" rel="noopener" class="font-medium text-(--brand-blue) hover:text-(--brand-blue-hover)">Terms of Service</a>
+            and have read the
+            <a href="/privacy" target="_blank" rel="noopener" class="font-medium text-(--brand-blue) hover:text-(--brand-blue-hover)">Privacy Policy</a>.
+          </span>
+        </label>
 
         <p v-if="errorMessage" class="m-0 text-[13px] text-(--danger)">{{ errorMessage }}</p>
 

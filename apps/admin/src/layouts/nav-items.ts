@@ -1,7 +1,7 @@
 import {
   LayoutGrid, Users, Building2, Settings2, GraduationCap, ScrollText,
   BookOpen, Route, Video, ClipboardList, HelpCircle, FileQuestion, Bot, BadgeCheck, ClipboardCheck,
-  UserCheck, CalendarDays, CalendarRange, Megaphone, Layers, Sparkles,
+  UserCheck, CalendarDays, CalendarRange, Megaphone, Layers, Sparkles, LifeBuoy,
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
 import { getActiveTenantId } from '@/store/auth'
@@ -55,7 +55,8 @@ export const adminNav: AdminNavEntry[] = [
     permission: 'tenancy:manage-own',
   },
   { id: 'users', label: 'Users', icon: Users, path: '/users', permission: 'identity:users:manage' },
-  { id: 'classes', label: 'Classes', icon: GraduationCap, path: '/classes', permission: 'identity:classes:manage' },
+  // Teachers see the classes they're staff on, read-only (the API filters the list).
+  { id: 'classes', label: 'Classes', icon: GraduationCap, path: '/classes', permission: ['identity:classes:manage', 'learning:courses:author'] },
   {
     id: 'learning',
     label: 'Learning',
@@ -64,7 +65,7 @@ export const adminNav: AdminNavEntry[] = [
       { id: 'courses', label: 'Courses', icon: BookOpen, path: '/courses', permission: ['learning:courses:author', 'learning:courses:manage-visibility'] },
       { id: 'paths', label: 'Learning Paths', icon: Route, path: '/paths', permission: 'learning:courses:author', feature: 'learning_paths' },
       { id: 'live-classes', label: 'Live Classes', icon: Video, path: '/live-classes', permission: 'learning:courses:author', feature: 'live_classes' },
-      { id: 'enrollments', label: 'Enrollments', icon: UserCheck, path: '/enrollments', permission: 'learning:enrolments:manage' },
+      { id: 'enrollments', label: 'Enrolments', icon: UserCheck, path: '/enrollments', permission: 'learning:enrolments:manage' },
     ],
   },
   {
@@ -93,4 +94,5 @@ export const adminNav: AdminNavEntry[] = [
   { id: 'plans', label: 'Plans', icon: Layers, path: '/plans', permission: 'tenancy:plans:manage', hiddenWhileImpersonating: true },
   { id: 'ai-models', label: 'AI Models', icon: Sparkles, path: '/ai-models', permission: 'ai:models:manage', hiddenWhileImpersonating: true },
   { id: 'audit', label: 'Audit Log', icon: ScrollText, path: '/audit', permission: 'identity:audit:view' },
+  { id: 'help', label: 'Help', icon: LifeBuoy, path: '/help' },
 ]

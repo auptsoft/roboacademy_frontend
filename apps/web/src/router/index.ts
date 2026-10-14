@@ -31,6 +31,21 @@ const router = createRouter({
         },
 
         {
+            // Terms of Service and Privacy Policy - public, linked from sign-up and every footer.
+            path: '/terms',
+            component: () => import("@/pages/legal.vue"),
+            props: { document: 'terms' },
+            meta: { public: true },
+        },
+
+        {
+            path: '/privacy',
+            component: () => import("@/pages/legal.vue"),
+            props: { document: 'privacy' },
+            meta: { public: true },
+        },
+
+        {
             // Printable certificate - outside app-layout so no app chrome reaches the page.
             path: '/certificates/:id',
             component: () => import("@/pages/certificate-print.vue"),

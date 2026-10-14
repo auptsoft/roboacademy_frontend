@@ -25,7 +25,7 @@ watch(() => props.visibility, (value) => { selected.value = value })
         <div>
           <h3 class="m-0 text-lg font-bold text-(--fg-1)">Visibility</h3>
           <p class="m-0 mt-1 text-xs text-(--fg-3)">
-            Controls who sees this course in the student catalog. Admins can enroll students at any level.
+            Controls who sees this course in the student catalog. Admins can enrol students at any level.
           </p>
         </div>
         <div class="flex shrink-0 items-center gap-3">

@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/dialog'
 import UserComboBox from '@/components/UserComboBox.vue'
 import SearchMultiSelect, { type SearchOption } from '@/components/SearchMultiSelect.vue'
+import { hasPermission } from '@/store/auth'
 import { ApiError } from '@/api/client'
 import {
   getClass,
@@ -45,6 +46,9 @@ const classId = computed(() => String(route.params.classId))
 const detail = ref<ClassDetail | null>(null)
 const loading = ref(true)
 const notFound = ref(false)
+// Teachers and teaching assistants on this class see it read-only; class managers can change it.
+const canManage = hasPermission('identity:classes:manage')
+
 const tab = ref<Tab>(
   (['roster', 'courses', 'paths', 'progress'] as const).find((t) => t === route.query.tab) ?? 'roster',
 )
@@ -161,7 +165,7 @@ const removalCopy = computed(() => {
   if (removal.kind === 'student') {
     return {
       title: `Remove ${removal.title} from this class?`,
-      description: 'They lose the enrollments this class gave them. Their progress is kept.',
+      description: 'They lose the enrolments this class gave them. Their progress is kept.',
       withdrawLabel: 'Also withdraw them from courses they only have through this class',
     }
   }
@@ -250,7 +254,7 @@ async function submitAssign() {
     toast.success(
       editingAssignment.value
         ? 'Due date updated.'
-        : `Assigned. ${enrolled} new ${assignKind.value === 'course' ? 'enrollments' : 'course enrollments'}.`,
+        : `Assigned. ${enrolled} new ${assignKind.value === 'course' ? 'enrolments' : 'course enrolments'}.`,
     )
     assignKind.value = null
     await refresh()
@@ -358,9 +362,9 @@ function tabCount(id: Tab): number | null {
                 <span class="text-sm text-(--fg-1)">{{ s.fullName }}</span>
                 <RaChip tone="instructor">{{ s.role }}</RaChip>
               </div>
-              <Button variant="ghost" size="sm" @click="removeStaffMember(s.userId)">Remove</Button>
+              <Button v-if="canManage" variant="ghost" size="sm" @click="removeStaffMember(s.userId)">Remove</Button>
             </div>
-            <form class="mt-2 flex items-center gap-2 max-sm:flex-col max-sm:items-stretch" @submit.prevent="submitAddStaff">
+            <form v-if="canManage" class="mt-2 flex items-center gap-2 max-sm:flex-col max-sm:items-stretch" @submit.prevent="submitAddStaff">
               <div class="flex-1"><UserComboBox v-model="staffUserId" /></div>
               <select
                 v-model="staffRole"
@@ -386,11 +390,11 @@ function tabCount(id: Tab): number | null {
             <p v-if="detail.students.length === 0" class="m-0 text-[13px] text-(--fg-3)">No students yet.</p>
             <div v-for="s in detail.students" :key="s.userId" class="flex items-center justify-between gap-2">
               <span class="text-sm text-(--fg-1)">{{ s.fullName }}</span>
-              <Button variant="ghost" size="sm" @click="askRemove({ kind: 'student', id: s.userId, title: s.fullName })">
+              <Button v-if="canManage" variant="ghost" size="sm" @click="askRemove({ kind: 'student', id: s.userId, title: s.fullName })">
                 Remove
               </Button>
             </div>
-            <form class="mt-2 flex flex-col gap-2" @submit.prevent="submitAddStudents">
+            <form v-if="canManage" class="mt-2 flex flex-col gap-2" @submit.prevent="submitAddStudents">
               <SearchMultiSelect
                 v-model="newStudents"
                 :search="searchUsers"
@@ -417,7 +421,7 @@ function tabCount(id: Tab): number | null {
               This works whatever the course's visibility.
             </p>
           </div>
-          <Button @click="openAssign('course')"><Plus :size="14" /> Assign courses</Button>
+          <Button v-if="canManage" @click="openAssign('course')"><Plus :size="14" /> Assign courses</Button>
         </div>
         <p v-if="detail.courses.length === 0" class="p-6 text-center text-[13px] text-(--fg-3)">No courses assigned yet.</p>
         <div
@@ -441,7 +445,7 @@ function tabCount(id: Tab): number | null {
           </div>
           <div class="text-xs text-(--fg-3)">{{ visibilityLabel(c.visibility) }}</div>
           <div class="text-xs" :class="isPast(c.dueAt) ? 'text-(--danger)' : 'text-(--fg-3)'">{{ formatDue(c.dueAt) }}</div>
-          <div class="flex justify-end gap-1 max-md:w-full max-md:justify-start">
+          <div v-if="canManage" class="flex justify-end gap-1 max-md:w-full max-md:justify-start">
             <Button variant="ghost" size="sm" @click="openEditDue('course', c.courseId, c.title, c.dueAt)">Due date</Button>
             <Button variant="ghost" size="sm" @click="askRemove({ kind: 'course', id: c.courseId, title: c.title })">
               Unassign
@@ -459,7 +463,7 @@ function tabCount(id: Tab): number | null {
               Students start the path and are enrolled in every course on it.
             </p>
           </div>
-          <Button @click="openAssign('path')"><Plus :size="14" /> Assign paths</Button>
+          <Button v-if="canManage" @click="openAssign('path')"><Plus :size="14" /> Assign paths</Button>
         </div>
         <p v-if="detail.paths.length === 0" class="p-6 text-center text-[13px] text-(--fg-3)">No learning paths assigned yet.</p>
         <div
@@ -483,7 +487,7 @@ function tabCount(id: Tab): number | null {
           </div>
           <div class="text-xs text-(--fg-3)">{{ p.courseCount }} courses</div>
           <div class="text-xs" :class="isPast(p.dueAt) ? 'text-(--danger)' : 'text-(--fg-3)'">{{ formatDue(p.dueAt) }}</div>
-          <div class="flex justify-end gap-1 max-md:w-full max-md:justify-start">
+          <div v-if="canManage" class="flex justify-end gap-1 max-md:w-full max-md:justify-start">
             <Button variant="ghost" size="sm" @click="openEditDue('path', p.pathId, p.title, p.dueAt)">Due date</Button>
             <Button variant="ghost" size="sm" @click="askRemove({ kind: 'path', id: p.pathId, title: p.title })">
               Unassign
