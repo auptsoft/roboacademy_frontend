@@ -39,6 +39,10 @@ const router = createRouter({
           component: () => import('@/pages/plans/detail.vue'),
         },
         {
+          path: 'ai-models',
+          component: () => import('@/pages/ai-models.vue'),
+        },
+        {
           path: 'users',
           component: () => import('@/pages/users.vue'),
         },

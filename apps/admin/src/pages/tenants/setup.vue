@@ -10,9 +10,10 @@ import Label from '@/components/ui/label.vue'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
 import UserPreviewPopover from '@/components/UserPreviewPopover.vue'
 import TenantPlanCard from '@/components/TenantPlanCard.vue'
+import TenantAISettingsCard from '@/components/TenantAISettingsCard.vue'
 import AuditLogFilters, { type AuditLogFilterState } from '@/components/AuditLogFilters.vue'
 import { ApiError, postImpersonationToken } from '@/api/client'
-import { enterTenant, hasPermission, isImpersonating } from '@/store/auth'
+import { enterTenant, getActiveTenantId, hasPermission, isImpersonating } from '@/store/auth'
 import {
   getTenant,
   updateTenant,
@@ -44,6 +45,14 @@ const canManage = hasPermission('tenancy:manage')
 const canManageOwn = canManage || hasPermission('tenancy:manage-own')
 const canImpersonate = hasPermission('tenancy:impersonate')
 
+// AI settings are always the caller's own active tenant (the API resolves it from the request),
+// so the section only appears when this page is showing that tenant - not another school a
+// platform admin is browsing without entering it. The platform tenant has it too: its AI (for
+// individual learners) follows its plan overrides and needs the same terms and switches.
+const showAI = computed(() =>
+  hasPermission('ai:settings:manage') &&
+  tenantId.value === (getActiveTenantId() || PLATFORM_TENANT_ID))
+
 // Whether this tenant's plan includes custom branding (the custom_branding feature, read from
 // its public branding response). When it doesn't, the Branding section stays visible but can't
 // be saved. Assumed included until known, so the controls don't flicker disabled on every load.
@@ -52,6 +61,7 @@ const brandingIncluded = ref(true)
 const sections = computed(() => [
   { id: 'general', label: 'General' },
   { id: 'plan', label: 'Plan & Usage' },
+  ...(showAI.value ? [{ id: 'ai', label: 'AI' }] : []),
   { id: 'hosts', label: 'Hosts' },
   { id: 'branding', label: 'Branding' },
   ...(canImpersonate ? [{ id: 'admin-access', label: 'Admin Access' }] : []),
@@ -66,6 +76,7 @@ const notFound = ref(false)
 const generalOpen = ref(false)
 // Opened when linked to directly (e.g. from a plan's school list).
 const planOpen = ref(route.hash === '#plan')
+const aiOpen = ref(route.hash === '#ai')
 const hostsOpen = ref(false)
 const brandingOpen = ref(false)
 const adminAccessOpen = ref(false)
@@ -522,6 +533,8 @@ watch(tenantId, async () => {
             :is-platform-tenant="isPlatformTenant"
             @changed="onPlanChanged"
           />
+
+          <TenantAISettingsCard v-if="showAI" :key="tenant.tenantId" v-model:open="aiOpen" />
 
           <!-- Hosts -->
           <RaCard id="hosts" :padding="0" class="scroll-mt-6 overflow-hidden">

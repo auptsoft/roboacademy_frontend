@@ -25,6 +25,7 @@ import {
 } from '@/api/plans'
 import { hasPermission } from '@/store/auth'
 import { dueDateToIso, isoToDueDate } from '@/lib/pickers'
+import { isAIPlanKey } from '@/lib/ai'
 
 const props = defineProps<{
   tenantId: string
@@ -73,10 +74,24 @@ function featureLabel(key: string): string {
   return catalog.value?.features.find((f) => f.key === key)?.label ?? key
 }
 
+// AI features and allowances are shown in the school's AI section, as percentages - token
+// counts mean nothing to a school, so they're left out of the generic lists here.
 const disabledFeatures = computed(() =>
   Object.entries(entitlements.value?.features ?? {})
-    .filter(([, enabled]) => !enabled)
+    .filter(([key, enabled]) => !enabled && !isAIPlanKey(key))
     .map(([key]) => featureLabel(key)),
+)
+
+// The platform tenant's only plan-controlled area: AI features and allowances.
+const aiFeatureDefinitions = computed(() => catalog.value?.features.filter((d) => isAIPlanKey(d.key)) ?? [])
+const aiLimitDefinitions = computed(() => catalog.value?.limits.filter((d) => isAIPlanKey(d.key)) ?? [])
+
+const seatLimits = computed(() => (usage.value?.limits ?? []).filter((l) => !isAIPlanKey(l.key)))
+
+const aiAllowances = computed(() =>
+  (usage.value?.limits ?? [])
+    .filter((l) => isAIPlanKey(l.key) && l.limit !== null && l.limit > 0)
+    .map((l) => ({ key: l.key, tier: l.key.includes('enhanced') ? 'Enhanced' : 'Basic', percent: usagePercent(l) })),
 )
 
 function usagePercent(limit: LimitUsage): number {
@@ -249,9 +264,57 @@ defineExpose({ reload: load })
       <CollapsibleContent>
         <p v-if="loading" class="m-0 p-6 text-center text-[13px] text-(--fg-3)">Loading plan…</p>
 
-        <p v-else-if="isPlatformTenant" class="m-0 py-5 px-6 text-sm text-(--fg-3)">
-          The platform tenant is exempt from plans: no limits, every feature, never expires.
-        </p>
+        <div v-else-if="isPlatformTenant" class="flex flex-col">
+          <p class="m-0 py-5 px-6 text-sm text-(--fg-3)">
+            The platform tenant is exempt from plans - no limits, every feature, never expires - except AI, which costs
+            money on every call. What individual learners get from AI is set below; until then it's off.
+          </p>
+          <form
+            v-if="canManagePlans && catalog"
+            class="flex flex-col gap-4 border-t border-(--line-1) py-5 px-6"
+            @submit.prevent="submitOverrides"
+          >
+            <div>
+              <h4 class="m-0 text-sm font-semibold text-(--fg-1)">AI for individual learners</h4>
+              <p class="m-0 mt-1 text-xs text-(--fg-3)">
+                The allowance is shared by all individual learners each month; the tutor's per-learner hourly limit spreads it.
+              </p>
+            </div>
+            <div class="grid grid-cols-2 gap-x-6 gap-y-3 max-md:grid-cols-1">
+              <div v-for="definition in aiFeatureDefinitions" :key="definition.key" class="flex items-center gap-2">
+                <span class="w-40 shrink-0 text-sm text-(--fg-2)">{{ definition.label }}</span>
+                <select v-model="featureOverrideForm[definition.key]" :class="selectClass" class="flex-1" :aria-label="`${definition.label} override`">
+                  <option value="plan">Plan default</option>
+                  <option value="on">On</option>
+                  <option value="off">Off</option>
+                </select>
+              </div>
+              <div v-for="definition in aiLimitDefinitions" :key="definition.key" class="flex items-center gap-2">
+                <span class="w-40 shrink-0 text-sm text-(--fg-2)">{{ definition.label }}</span>
+                <template v-if="limitOverrideForm[definition.key]">
+                  <select v-model="limitOverrideForm[definition.key].mode" :class="selectClass" class="flex-1" :aria-label="`${definition.label} override`">
+                    <option value="plan">Plan ({{ planLimitText(definition.key) }})</option>
+                    <option value="custom">Custom</option>
+                    <option value="unlimited">Unlimited</option>
+                  </select>
+                  <Input
+                    v-if="limitOverrideForm[definition.key].mode === 'custom'"
+                    v-model="limitOverrideForm[definition.key].value"
+                    type="number"
+                    min="0"
+                    class="h-9 w-32"
+                    :aria-label="`${definition.label} custom limit`"
+                  />
+                </template>
+              </div>
+            </div>
+            <div class="flex justify-end">
+              <Button type="submit" variant="outline" :disabled="savingOverrides">
+                {{ savingOverrides ? 'Saving…' : 'Save AI Settings' }}
+              </Button>
+            </div>
+          </form>
+        </div>
 
         <div v-else-if="entitlements && usage" class="flex flex-col">
           <!-- Term -->
@@ -289,7 +352,7 @@ defineExpose({ reload: load })
                 {{ usage.enforcementMode === 'Hard' ? 'Creation is blocked at the limit' : 'Over-limit creation is allowed and flagged' }}
               </span>
             </div>
-            <div v-for="limit in usage.limits" :key="limit.key" class="flex flex-col gap-1.5">
+            <div v-for="limit in seatLimits" :key="limit.key" class="flex flex-col gap-1.5">
               <div class="flex items-center justify-between text-sm">
                 <span class="text-(--fg-2)">{{ limit.label }}</span>
                 <span :class="limit.overLimit ? 'font-semibold text-(--danger)' : 'text-(--fg-1)'">
@@ -300,6 +363,16 @@ defineExpose({ reload: load })
               <div v-if="limit.limit !== null" class="h-1.5 overflow-hidden rounded-(--ra-pill) bg-(--bg-3)">
                 <div class="h-full rounded-(--ra-pill) transition-[width]" :class="usageBarClass(limit)" :style="{ width: `${usagePercent(limit)}%` }" />
               </div>
+            </div>
+            <div v-if="aiAllowances.length > 0" class="flex items-center justify-between text-sm">
+              <span class="text-(--fg-2)">AI allowance this month</span>
+              <span class="text-(--fg-1)">
+                <template v-for="(allowance, index) in aiAllowances" :key="allowance.key">
+                  <span v-if="index > 0" class="text-(--fg-3)"> · </span>
+                  {{ allowance.tier }} {{ allowance.percent }}%
+                </template>
+                <span class="text-(--fg-3)"> used — details under AI</span>
+              </span>
             </div>
             <p v-if="disabledFeatures.length > 0" class="m-0 text-xs text-(--fg-3)">
               Not included: {{ disabledFeatures.join(', ') }}

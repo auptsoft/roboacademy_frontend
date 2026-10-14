@@ -1179,6 +1179,8 @@ async function copyToTenants(targetTenantIds: string[]) {
             v-model="lessonForm"
             :errors="lessonErrors"
             :has-lesson="!!lessonDialogTarget?.lesson"
+            :lesson-id="lessonDialogTarget?.lesson?.id ?? null"
+            :saved-context="lessonDialogTarget?.lesson?.context ?? null"
             :content-reference="lessonDialogTarget?.lesson?.contentReference ?? null"
             :uploading="uploadingLessonId === lessonDialogTarget?.lesson?.id"
             @view="viewLessonContent(lessonDialogTarget!.moduleId, lessonDialogTarget!.lesson!)"

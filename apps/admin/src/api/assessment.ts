@@ -128,6 +128,9 @@ export interface AuthoredAssessment {
   passMark: number | null
   questions: AuthoredQuestion[]
   prompt: string | null
+  // Written only: the teacher's rubric / model answer. Never shown to learners; used by graders
+  // and AI feedback drafts. Editable any time via setGradingGuidance, even after attempts.
+  gradingGuidance: string | null
   acceptedContentTypes: string[] | null
   maxFileSizeBytes: number | null
   // Shown before/after attempting - display text, always editable via updateAssessment
@@ -199,6 +202,15 @@ export function updateAssessmentContent(
   assessmentId: string, request: UpdateAssessmentContentRequest,
 ): Promise<{ id: string; type: AssessmentType }> {
   return apiFetch(`/api/assessment/assessments/${assessmentId}/content`, { method: 'PUT', body: JSON.stringify(request) })
+}
+
+export function setGradingGuidance(
+  assessmentId: string, gradingGuidance: string | null,
+): Promise<{ id: string; gradingGuidance: string | null }> {
+  return apiFetch(`/api/assessment/assessments/${assessmentId}/grading-guidance`, {
+    method: 'PUT',
+    body: JSON.stringify({ gradingGuidance }),
+  })
 }
 
 export function cloneAssessment(

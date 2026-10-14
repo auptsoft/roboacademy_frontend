@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { RaCard, RaChip } from '@roboacademy/ui'
@@ -11,6 +11,9 @@ import Pagination from '@/components/Pagination.vue'
 import { ApiError } from '@/api/client'
 import { usePagedList } from '@/composables/usePagedList'
 import { listAttempts, gradeAttempt, type AttemptItem } from '@/api/assessment'
+import { getFeedbackDraftStatuses } from '@/api/ai'
+import AIDraftPanel from '@/components/AIDraftPanel.vue'
+import { useAIAvailability } from '@/composables/useAIAvailability'
 
 const router = useRouter()
 
@@ -30,6 +33,23 @@ const {
 )
 
 onMounted(load)
+
+// "AI draft ready" badges for the visible page, when the school has feedback drafts.
+const aiAvailability = useAIAvailability()
+const readyDrafts = ref(new Set<string>())
+watch([attempts, aiAvailability.data], async ([current]) => {
+  const written = current.filter((a) => a.assessmentType === 'Written').map((a) => a.id)
+  if (written.length === 0 || !aiAvailability.feature('FeedbackDrafts')?.available) {
+    readyDrafts.value = new Set()
+    return
+  }
+  try {
+    const statuses = await getFeedbackDraftStatuses(written)
+    readyDrafts.value = new Set(statuses.filter((s) => s.status === 'Ready').map((s) => s.attemptId))
+  } catch {
+    readyDrafts.value = new Set()
+  }
+})
 
 function openAssessment(assessmentId: string) {
   router.push(`/assessment/assessments/${assessmentId}`)
@@ -104,7 +124,10 @@ async function submitGrade() {
         >
           {{ attempt.assessmentTitle }}
         </button>
-        <div><RaChip tone="neutral">{{ attempt.assessmentType }}</RaChip></div>
+        <div class="flex flex-wrap gap-1.5">
+          <RaChip tone="neutral">{{ attempt.assessmentType }}</RaChip>
+          <RaChip v-if="readyDrafts.has(attempt.id)" tone="info">AI draft ready</RaChip>
+        </div>
         <div class="font-mono text-[13px] text-(--fg-2)">{{ attempt.userId }}</div>
         <Button size="sm" variant="outline" @click="openGrade(attempt)">Grade</Button>
       </div>
@@ -127,6 +150,11 @@ async function submitGrade() {
           <DialogDescription>Only Passed matters for certification eligibility — score and feedback are for record-keeping.</DialogDescription>
         </DialogHeader>
         <form class="flex flex-col gap-4" @submit.prevent="submitGrade">
+          <AIDraftPanel
+            v-if="gradingAttempt?.responseText"
+            :attempt-id="gradingAttempt.id"
+            @use="(d) => Object.assign(gradeForm, { passed: d.passed, score: d.score === null ? '' : String(d.score), feedback: d.feedback })"
+          />
           <div v-if="gradingAttempt?.responseText" class="flex flex-col gap-1.5">
             <Label>Response</Label>
             <p class="m-0 rounded-(--ra-md) border border-(--line-2) bg-(--bg-3) p-3 text-sm text-(--fg-1) whitespace-pre-wrap">

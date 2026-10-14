@@ -1,7 +1,7 @@
 import {
   LayoutGrid, Users, Building2, Settings2, GraduationCap, ScrollText,
   BookOpen, Route, Video, ClipboardList, HelpCircle, FileQuestion, Bot, BadgeCheck, ClipboardCheck,
-  UserCheck, CalendarDays, CalendarRange, Megaphone, Layers,
+  UserCheck, CalendarDays, CalendarRange, Megaphone, Layers, Sparkles,
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
 import { getActiveTenantId } from '@/store/auth'
@@ -91,5 +91,6 @@ export const adminNav: AdminNavEntry[] = [
   { id: 'certificates', label: 'Certificates', icon: BadgeCheck, path: '/certificates', permission: 'certification:certificates:issue', feature: 'certificates' },
   { id: 'tenants', label: 'Tenants', icon: Building2, path: '/tenants', permission: 'tenancy:manage', hiddenWhileImpersonating: true },
   { id: 'plans', label: 'Plans', icon: Layers, path: '/plans', permission: 'tenancy:plans:manage', hiddenWhileImpersonating: true },
+  { id: 'ai-models', label: 'AI Models', icon: Sparkles, path: '/ai-models', permission: 'ai:models:manage', hiddenWhileImpersonating: true },
   { id: 'audit', label: 'Audit Log', icon: ScrollText, path: '/audit', permission: 'identity:audit:view' },
 ]

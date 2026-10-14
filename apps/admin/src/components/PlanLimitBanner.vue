@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { AlertTriangle } from 'lucide-vue-next'
 import type { LimitUsage, PlanEnforcementMode } from '@/api/plans'
 import { limitNoun } from '@/lib/plan-errors'
+import { isAIPlanKey } from '@/lib/ai'
 
 const props = defineProps<{
   limits: LimitUsage[]
@@ -16,6 +17,11 @@ const anyOver = computed(() => shown.value.some((l) => l.overLimit))
 
 function describe(limit: LimitUsage): string {
   const cap = limit.limit ?? 0
+  // AI allowances are tokens: say how much of the month's allowance is gone, not the raw counts.
+  if (isAIPlanKey(limit.key)) {
+    const tier = limit.key.includes('enhanced') ? 'Enhanced AI' : 'AI'
+    return `${tier} allowance for this month used up`
+  }
   const noun = limitNoun(limit.key, cap)
   return limit.overLimit
     ? `${limit.used.toLocaleString()} of ${cap.toLocaleString()} ${noun} — over your plan`

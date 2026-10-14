@@ -18,13 +18,23 @@ import { getEnv } from '@/lib/runtime-env'
 import { useCachedQuery } from '@/composables/useCachedQuery'
 import { useTenantUsage } from '@/composables/useTenantUsage'
 import PlanLimitBanner from '@/components/PlanLimitBanner.vue'
+import { isAIPlanKey } from '@/lib/ai'
 
 const router = useRouter()
 
 // Plan usage for a school's own dashboard (empty for the platform tenant and for roles that
 // can't read it). Only capped limits get a tile.
 const tenantUsage = useTenantUsage()
-const cappedLimits = computed(() => (tenantUsage.usage.value?.limits ?? []).filter((l) => l.limit !== null))
+const cappedLimits = computed(() =>
+  (tenantUsage.usage.value?.limits ?? []).filter((l) => l.limit !== null && !isAIPlanKey(l.key)))
+
+// AI allowances collapse into one tile: the tier closest to its limit, as a percentage.
+const aiTile = computed(() => {
+  const tiers = (tenantUsage.usage.value?.limits ?? []).filter((l) => isAIPlanKey(l.key) && l.limit !== null && l.limit > 0)
+  if (tiers.length === 0) return null
+  const percent = Math.max(...tiers.map((l) => Math.min(100, Math.round((l.used / l.limit!) * 100))))
+  return { percent, atLimit: tiers.some((l) => l.atLimit) }
+})
 
 function seatsDelta(used: number, limit: number): string {
   return used > limit ? `${(used - limit).toLocaleString()} over plan` : `${(limit - used).toLocaleString()} left`
@@ -128,6 +138,14 @@ const activity = computed<IdentityAuditLogItem[]>(() => activityData.value?.item
         :value="`${limit.used.toLocaleString()} / ${limit.limit!.toLocaleString()}`"
         :delta="seatsDelta(limit.used, limit.limit!)"
         :delta-tone="limit.atLimit || limit.overLimit ? 'muted' : 'success'"
+        class="ring-1 ring-inset ring-(--brand-blue-ring)"
+      />
+      <RaKpi
+        v-if="aiTile"
+        label="AI allowance (month)"
+        :value="`${aiTile.percent}% used`"
+        :delta="aiTile.atLimit ? 'Used up — renews on the 1st' : `${100 - aiTile.percent}% left`"
+        :delta-tone="aiTile.atLimit ? 'muted' : 'success'"
         class="ring-1 ring-inset ring-(--brand-blue-ring)"
       />
       <RaKpi label="Courses" :value="totalCourses === null ? '—' : String(totalCourses)" class="ring-1 ring-inset ring-(--brand-blue-ring)" />
