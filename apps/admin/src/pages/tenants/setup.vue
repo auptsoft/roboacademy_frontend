@@ -47,10 +47,10 @@ const canImpersonate = hasPermission('tenancy:impersonate')
 
 // AI settings are always the caller's own active tenant (the API resolves it from the request),
 // so the section only appears when this page is showing that tenant - not another school a
-// platform admin is browsing without entering it.
+// platform admin is browsing without entering it. The platform tenant has it too: its AI (for
+// individual learners) follows its plan overrides and needs the same terms and switches.
 const showAI = computed(() =>
   hasPermission('ai:settings:manage') &&
-  !isPlatformTenant.value &&
   tenantId.value === (getActiveTenantId() || PLATFORM_TENANT_ID))
 
 // Whether this tenant's plan includes custom branding (the custom_branding feature, read from
