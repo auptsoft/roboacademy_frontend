@@ -12,6 +12,7 @@ import { ApiError } from '@/api/client'
 import { getCourse, getCourseResumePoint, recordLessonProgress, getLessonPlaybackUrl, combinedProgressPercent, type CourseDetail, type CourseLessonDetail, type CourseResumePoint } from '@/api/learning'
 import { getLabSession, requestLabSession } from '@/api/robotics-lab'
 import SimulationFrame from '@/components/simulation/SimulationFrame.vue'
+import { renderRichText } from '@/lib/rich-text'
 import {
   listModuleAssessments, getAssessment, listMyAttempts, startAttempt, submitAttempt, getAttemptFileUploadUrl,
   type AssessmentSummary, type AssessmentDetail, type AttemptSummary,
@@ -663,7 +664,7 @@ watch(() => route.params.id, load, { immediate: true })
 
         <hr class="my-8 border-0 border-t border-(--line-1)" />
 
-        <div v-if="selectedFlat.lesson.context" class="text-(--fg-2) leading-[1.7]" v-html="selectedFlat.lesson.context"></div>
+        <div v-if="selectedFlat.lesson.context" class="rich-text text-(--fg-2) leading-[1.7]" v-html="renderRichText(selectedFlat.lesson.context)"></div>
 
         <!--
           Simulation is checked first on purpose. A simulation lesson carries its scene id in
@@ -799,7 +800,7 @@ watch(() => route.params.id, load, { immediate: true })
         </div>
 
         <template v-else-if="assessmentDetail">
-          <p v-if="assessmentDetail.preText" class="text-(--fg-2) leading-[1.7]">{{ assessmentDetail.preText }}</p>
+          <div v-if="assessmentDetail.preText" class="rich-text text-(--fg-2) leading-[1.7]" v-html="renderRichText(assessmentDetail.preText)"></div>
 
           <div class="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-(--fg-4) mb-5">
             <span v-if="assessmentDetail.maxAttempts != null">Attempts: {{ myAttempts.length }}/{{ assessmentDetail.maxAttempts }}</span>
@@ -892,7 +893,7 @@ watch(() => route.params.id, load, { immediate: true })
             <p v-if="startState === 'error'" class="mt-2 mb-0 text-xs text-(--danger)">{{ startError }}</p>
           </RaCard>
 
-          <p v-if="assessmentDetail.postText" class="mt-4 text-(--fg-2) leading-[1.7]">{{ assessmentDetail.postText }}</p>
+          <div v-if="assessmentDetail.postText" class="rich-text mt-4 text-(--fg-2) leading-[1.7]" v-html="renderRichText(assessmentDetail.postText)"></div>
         </template>
       </template>
 

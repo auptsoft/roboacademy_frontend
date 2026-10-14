@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { RaButton, RaChip, RaProgress } from '@roboacademy/ui'
 import { ArrowLeft, ArrowRight, Loader2, AlertTriangle, Compass, Play, Layers } from 'lucide-vue-next'
 import { ApiError } from '@/api/client'
+import { renderRichText } from '@/lib/rich-text'
 import {
   getLearningPath, getLearningPathIntroVideoUrl, getPathProgress, getMyPathEnrolments,
   startLearningPath, withdrawPathEnrolment,
@@ -266,7 +267,7 @@ watch(() => route.params.id, load, { immediate: true })
 
           <template v-if="path.longDescription">
             <hr class="m-0 border-0 border-t border-(--line-1)" />
-            <p class="m-0 text-sm text-(--fg-2) leading-[1.7] max-w-180" v-html="path.longDescription"></p>
+            <div class="rich-text text-sm text-(--fg-2) leading-[1.7] max-w-180" v-html="renderRichText(path.longDescription)"></div>
           </template>
         </div>
 
