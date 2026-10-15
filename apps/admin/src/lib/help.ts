@@ -39,6 +39,7 @@ const PAGE_NAMES: Record<string, string> = {
   '/assessment/assessments': 'Assessments',
   '/assessment/grading': 'Grading',
   '/roboticslab/sessions': 'Robotics Lab',
+  '/roboticslab/scenes': 'Robotics Lab',
   '/events': 'Events',
   '/calendar': 'Calendar',
   '/announcements': 'Announcements',

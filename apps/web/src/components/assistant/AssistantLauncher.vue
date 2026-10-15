@@ -12,6 +12,7 @@ const { assistantAvailable, load } = useAIAvailability()
 const { open, openAssistant } = useAssistant()
 
 onMounted(() => void load())
+
 </script>
 
 <template>

@@ -1,7 +1,7 @@
 import {
   LayoutGrid, Users, Building2, Settings2, GraduationCap, ScrollText,
   BookOpen, Route, Video, ClipboardList, HelpCircle, FileQuestion, Bot, BadgeCheck, ClipboardCheck,
-  UserCheck, CalendarDays, CalendarRange, Megaphone, Layers, Sparkles, LifeBuoy,
+  UserCheck, CalendarDays, CalendarRange, Megaphone, Layers, Sparkles, LifeBuoy, Boxes,
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
 import { getActiveTenantId } from '@/store/auth'
@@ -84,6 +84,7 @@ export const adminNav: AdminNavEntry[] = [
     icon: Bot,
     items: [
       { id: 'sessions', label: 'Sessions', icon: Bot, path: '/roboticslab/sessions', permission: 'roboticslab:robots:manage', feature: 'robotics_lab' },
+      { id: 'scenes', label: 'Simulation Scenes', icon: Boxes, path: '/roboticslab/scenes', permission: 'roboticslab:scenes:author', feature: 'robotics_lab' },
     ],
   },
   { id: 'events', label: 'Events', icon: CalendarDays, path: '/events', permission: 'scheduling:events:manage', feature: 'events' },

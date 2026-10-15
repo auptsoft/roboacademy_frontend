@@ -9,7 +9,11 @@
     "paths": {
       "@/*": ["./src/*"],
       "@roboacademy/ui": ["../../packages/ui/src/index.ts"],
-      "@roboacademy/ui/*": ["../../packages/ui/src/*"]
+      "@roboacademy/ui/*": ["../../packages/ui/src/*"],
+      "@roboacademy/sim": ["../../packages/sim/src/index.ts"],
+      "@roboacademy/sim/*": ["../../packages/sim/src/*"],
+      "@roboacademy/sim": ["../../packages/sim/src/index.ts"],
+      "@roboacademy/sim/*": ["../../packages/sim/src/*"]
     }
   }
 }

@@ -192,6 +192,9 @@ export interface CourseLessonDetail {
   // infra that doesn't exist yet, and context is raw HTML/Markdown lesson body.
   contentReference: string | null
   context: string | null
+  // Interactive lesson blocks (versioned JSON). Not served by the backend yet - see
+  // components/lesson-blocks/types.ts; parse with parseInteractiveContent before rendering.
+  content?: unknown
 }
 
 export interface CourseModuleDetail {

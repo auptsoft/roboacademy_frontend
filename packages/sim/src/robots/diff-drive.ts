@@ -1,0 +1,65 @@
+import type { RobotCapability } from './types'
+
+/** Top wheel speed at 100 %, in metres per second. */
+export const DIFF_DRIVE_MAX_SPEED = 0.4
+/** Distance between the wheels, in metres. Sets how fast opposite wheel speeds turn the robot. */
+export const DIFF_DRIVE_WHEEL_BASE = 0.16
+/** Range of the front distance sensor, in metres. Readings beyond it report this value. */
+export const DIFF_DRIVE_DISTANCE_RANGE = 2
+/** How far ahead of the robot's centre the two line sensors sit, and how far apart, in metres. */
+export const DIFF_DRIVE_LINE_SENSOR_OFFSET = { forward: 0.09, side: 0.03 }
+
+export const diffDrive: RobotCapability = {
+  type: 'diff-drive',
+  label: 'Two-wheel robot',
+  size: { width: 0.18, length: 0.2, height: 0.1 },
+  commands: [
+    {
+      name: 'move',
+      label: 'move',
+      params: [
+        { name: 'distanceCm', label: 'distance', unit: 'cm', min: -500, max: 500, default: 20 },
+        { name: 'speed', label: 'speed', unit: '%', min: 1, max: 100, default: 50 },
+      ],
+    },
+    {
+      name: 'turn',
+      label: 'turn',
+      params: [
+        { name: 'degrees', label: 'angle', unit: '°', min: -360, max: 360, default: 90 },
+        { name: 'speed', label: 'speed', unit: '%', min: 1, max: 100, default: 50 },
+      ],
+    },
+    {
+      name: 'drive',
+      label: 'drive',
+      params: [
+        { name: 'speed', label: 'speed', unit: '%', min: -100, max: 100, default: 50 },
+        // 0 means "keep driving until the next command".
+        { name: 'durationMs', label: 'for', unit: 'ms', min: 0, max: 60_000, default: 0 },
+      ],
+    },
+    {
+      name: 'setWheels',
+      label: 'set wheels',
+      params: [
+        { name: 'left', label: 'left', unit: '%', min: -100, max: 100, default: 50 },
+        { name: 'right', label: 'right', unit: '%', min: -100, max: 100, default: 50 },
+      ],
+    },
+    { name: 'stop', label: 'stop', params: [] },
+    {
+      name: 'wait',
+      label: 'wait',
+      params: [{ name: 'ms', label: 'for', unit: 'ms', min: 0, max: 60_000, default: 1000 }],
+    },
+  ],
+  sensors: [
+    { name: 'distance_front', label: 'front distance', kind: 'number', unit: 'm' },
+    { name: 'line_left', label: 'left line sensor', kind: 'boolean' },
+    { name: 'line_right', label: 'right line sensor', kind: 'boolean' },
+    { name: 'pos_x', label: 'position x', kind: 'number', unit: 'm', hideable: true },
+    { name: 'pos_z', label: 'position z', kind: 'number', unit: 'm', hideable: true },
+    { name: 'heading', label: 'heading', kind: 'number', unit: '°', hideable: true },
+  ],
+}

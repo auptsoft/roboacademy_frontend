@@ -1,18 +1,18 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { RaChip, RaProgress, RaCard, RaButton } from '@roboacademy/ui'
 import {
   CheckCircle2, PlayCircle, Lock, ChevronRight, ChevronDown, Layers, List,
   Loader2, AlertTriangle, Compass, ArrowRight, ExternalLink,
   Video, BookOpen, Puzzle, Cpu, FileText,
-  ClipboardCheck, PenLine, UploadCloud, Paperclip, Sparkles,
+  ClipboardCheck, PenLine, UploadCloud, Paperclip, Sparkles, PanelLeftClose,
 } from 'lucide-vue-next'
 import { ApiError } from '@/api/client'
 import { getCourse, getCourseResumePoint, recordLessonProgress, getLessonPlaybackUrl, combinedProgressPercent, type CourseDetail, type CourseLessonDetail, type CourseResumePoint } from '@/api/learning'
-import { getLabSession, requestLabSession } from '@/api/robotics-lab'
-import SimulationFrame from '@/components/simulation/SimulationFrame.vue'
 import TutorPanel from '@/components/tutor/TutorPanel.vue'
+import InteractiveLesson from '@/components/lesson-blocks/InteractiveLesson.vue'
+import { parseInteractiveContent } from '@/components/lesson-blocks/types'
 import { useAIAvailability } from '@/composables/useAIAvailability'
 import { renderRichText } from '@/lib/rich-text'
 import {
@@ -23,6 +23,32 @@ import {
 const route = useRoute()
 const router = useRouter()
 const showCurriculum = ref(false)
+
+// Desktop-only: lets learners hide the curriculum to give the lesson full width. Mobile uses the
+// showCurriculum drawer instead. Remembered across visits as a per-browser convenience.
+const CURRICULUM_COLLAPSED_KEY = 'ra.courseCurriculumCollapsed'
+const curriculumCollapsed = ref(readCurriculumCollapsed())
+
+function readCurriculumCollapsed() {
+  try {
+    return localStorage.getItem(CURRICULUM_COLLAPSED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+watch(curriculumCollapsed, (collapsed) => {
+  try {
+    localStorage.setItem(CURRICULUM_COLLAPSED_KEY, collapsed ? '1' : '0')
+  } catch {
+    // Storage unavailable (private mode etc.) — the toggle still works for this visit.
+  }
+})
+
+function openCurriculum() {
+  showCurriculum.value = true
+  curriculumCollapsed.value = false
+}
 
 const lessonTypeIcon = { Video, Reading: BookOpen, Interactive: Puzzle, Simulation: Cpu, Pdf: FileText } as const
 const assessmentTypeIcon = { Quiz: ClipboardCheck, Written: PenLine, FileSubmission: UploadCloud } as const
@@ -186,22 +212,27 @@ async function markComplete() {
 
 // ── Simulation lessons ───────────────────────────────────────────────────────
 //
-// A simulation lesson is completed by passing it, not by self-reporting. The engine submits its
-// result to the simulation service, which notifies this backend over its own channel; that path
-// records the lesson. We deliberately never call recordLessonProgress here - doing so would let
-// any client claim a pass without running anything.
+// A simulation lesson is completed by passing it, not by self-reporting. A graded run is scored on
+// the server, which records the lesson itself. We deliberately never call recordLessonProgress
+// here - doing so would let any client claim a pass without running anything.
 
-const simFrame = ref<InstanceType<typeof SimulationFrame> | null>(null)
-const simSessionId = ref<string | null>(null)
-const simState = ref<'idle' | 'opening' | 'ready' | 'submitting' | 'recording' | 'error'>('idle')
-const simError = ref('')
-const simResult = ref<{ score: number; passed: boolean } | null>(null)
+// Loaded on demand: the simulator (physics WASM, Blockly, three.js) is several megabytes, and
+// only Simulation lessons need it.
+const SimulationLesson = defineAsyncComponent(() => import('@/components/simulation/SimulationLesson.vue'))
+const simGraded = ref<{ score: number; passed: boolean } | null>(null)
 
 // Lesson types arrive from the backend enum in PascalCase, but have been compared both ways in
 // this file's template. Normalise once so every branch of the content dispatch agrees.
 const lessonType = computed(() => selectedFlat.value?.lesson.type?.toLowerCase() ?? '')
 
 const isSimulationLesson = computed(() => lessonType.value === 'simulation')
+
+// ── Interactive lessons ──────────────────────────────────────────────────────
+// Lessons with content blocks hold "Mark Complete" back until every required check is resolved.
+// That gate is client-side only: the checks are formative, unlike simulation grading.
+const interactiveContent = computed(() =>
+  lessonType.value === 'interactive' ? parseInteractiveContent(selectedFlat.value?.lesson.content) : null)
+const interactiveComplete = ref(false)
 
 // ── AI tutor ─────────────────────────────────────────────────────────────────
 // Offered on non-simulation lessons when the school's plan and settings include it (simulation
@@ -212,95 +243,26 @@ const tutorOpen = ref(false)
 const showTutorButton = computed(() =>
   aiAvailability.tutorAvailable.value && contentKind.value === 'lesson' && !!selectedFlat.value && !isSimulationLesson.value)
 
-const simButtonLabel = computed(() => {
-  if (simState.value === 'submitting') return 'Submitting…'
-  if (simState.value === 'recording') return 'Recording result…'
-  return simResult.value && !simResult.value.passed ? 'Submit again' : 'Submit for grading'
-})
-
-async function openSimulation() {
-  if (!course.value || !selectedFlat.value) return
-  simState.value = 'opening'
-  simError.value = ''
-  simResult.value = null
-  simSessionId.value = null
-  try {
-    // Simulation sessions are provisioned and scheduled in this one call, so the returned id
-    // can be joined immediately.
-    const session = await requestLabSession({
-      courseId: course.value.id,
-      lessonId: selectedFlat.value.lesson.id,
-      mode: 'Simulation',
-    })
-    simSessionId.value = session.id
-    simState.value = 'ready'
-  } catch (err) {
-    simState.value = 'error'
-    simError.value = err instanceof ApiError ? err.message : 'This simulation could not be opened.'
-  }
-}
-
-function submitSimulation() {
-  simState.value = 'submitting'
-  simError.value = ''
-  simFrame.value?.requestSubmit()
-}
-
 /**
- * The engine's `graded` message is optimistic UI only. The authoritative record arrives
- * asynchronously via the simulation service, so poll the session until the backend agrees
- * before refreshing progress.
+ * The backend records progress for a passing graded run just after scoring it (the event goes
+ * through the outbox), so refresh the resume point a few times until this lesson shows as done.
  */
 async function onSimulationGraded(result: { score: number; passed: boolean }) {
-  simResult.value = result
-  if (!result.passed) {
-    simState.value = 'ready'
-    return
-  }
-
-  simState.value = 'recording'
-  const sessionId = simSessionId.value
-  if (!sessionId || !course.value) return
-
-  const deadline = Date.now() + 15_000
-  let delay = 500
-  while (Date.now() < deadline) {
+  simGraded.value = result
+  if (!result.passed || !course.value) return
+  const courseId = course.value.id
+  for (const delay of [800, 2000, 4000]) {
     await new Promise((resolve) => setTimeout(resolve, delay))
-    delay = Math.min(delay * 2, 4_000)
     try {
-      const session = await getLabSession(sessionId)
-      if (session.status === 'Completed') {
-        resume.value = await getCourseResumePoint(course.value.id)
-        simState.value = 'ready'
-        return
-      }
+      resume.value = await getCourseResumePoint(courseId)
     } catch {
-      // Keep polling: a transient read failure is not a grading failure.
+      // Keep trying: a transient read failure is not a grading failure.
     }
+    if (selectedState.value === 'done') return
   }
-
-  // The result is stored on the simulation service either way, so this is a delay, not a loss.
-  simState.value = 'ready'
-  simError.value = 'Your result is being recorded and will appear shortly.'
 }
 
-function onSimulationError(error: { code: string; message: string; recoverable: boolean }) {
-  simState.value = error.recoverable ? 'ready' : 'error'
-  simError.value = error.message
-}
-
-// Opening a different lesson tears the frame down and books a fresh session. Destroying the
-// iframe is the teardown: it frees the WebGL context, physics heap and socket in one step.
-watch(
-  () => selectedFlat.value?.lesson.id,
-  () => {
-    simSessionId.value = null
-    simResult.value = null
-    simError.value = ''
-    simState.value = 'idle'
-    if (isSimulationLesson.value) void openSimulation()
-  },
-)
+watch(() => selectedFlat.value?.lesson.id, () => (simGraded.value = null))
 
 const videoState = ref<'idle' | 'loading' | 'playing' | 'error'>('idle')
 const videoUrl = ref<string | null>(null)
@@ -546,12 +508,23 @@ watch(() => route.params.id, load, { immediate: true })
     />
     <div
       class="w-80 shrink-0 border-r border-(--line-1) flex flex-col overflow-hidden max-md:fixed max-md:top-0 max-md:bottom-0 max-md:left-0 max-md:w-[85%] max-md:max-w-80 max-md:z-40 max-md:bg-(--bg-0) max-md:border-r max-md:border-(--line-1) max-md:transition-transform max-md:duration-(--dur-2) max-md:ease-(--ease-out)"
-      :class="showCurriculum ? 'max-md:translate-x-0' : 'max-md:-translate-x-full'"
+      :class="[showCurriculum ? 'max-md:translate-x-0' : 'max-md:-translate-x-full', curriculumCollapsed && 'md:hidden']"
     >
       <div class="px-4.5 py-5 border-b border-(--line-1) shrink-0">
-        <div class="flex justify-between items-center mb-1">
+        <div class="flex justify-between items-center gap-2 mb-1">
           <span class="text-[15px] font-bold text-(--fg-1)">Course Curriculum</span>
-          <RaChip tone="overlay">{{ flatLessons.length ? (flatLessons.findIndex(f => f.lesson.id === selectedFlat?.lesson.id) + 1) : 0 }}/{{ flatLessons.length }}</RaChip>
+          <div class="flex items-center gap-1.5">
+            <RaChip tone="overlay">{{ flatLessons.length ? (flatLessons.findIndex(f => f.lesson.id === selectedFlat?.lesson.id) + 1) : 0 }}/{{ flatLessons.length }}</RaChip>
+            <button
+              type="button"
+              class="inline-flex items-center justify-center w-7 h-7 rounded-(--ra-md) bg-transparent border-0 text-(--fg-3) cursor-pointer hover:bg-(--bg-3) hover:text-(--fg-1) max-md:hidden"
+              title="Hide curriculum"
+              aria-label="Hide curriculum"
+              @click="curriculumCollapsed = true"
+            >
+              <PanelLeftClose :size="16" />
+            </button>
+          </div>
         </div>
         <p class="m-0 text-xs text-(--fg-3)">{{ course.title }}</p>
       </div>
@@ -645,8 +618,10 @@ watch(() => route.params.id, load, { immediate: true })
     <!-- Right: lesson body -->
     <div class="flex-1 overflow-y-auto px-12 pt-8 pb-12 max-md:px-4 max-md:pt-5 max-md:pb-8">
       <button
-        class="hidden items-center gap-2 mb-4 py-2 px-3.5 rounded-(--ra-md) border border-(--line-2) bg-(--bg-2) text-(--fg-2) text-[13px] font-semibold cursor-pointer max-md:inline-flex"
-        @click="showCurriculum = true"
+        type="button"
+        class="hidden items-center gap-2 mb-4 py-2 px-3.5 rounded-(--ra-md) border border-(--line-2) bg-(--bg-2) text-(--fg-2) text-[13px] font-semibold cursor-pointer hover:text-(--fg-1) max-md:inline-flex"
+        :class="curriculumCollapsed && 'md:inline-flex'"
+        @click="openCurriculum"
       >
         <List :size="14" /> Curriculum
       </button>
@@ -685,31 +660,26 @@ watch(() => route.params.id, load, { immediate: true })
 
         <div v-if="selectedFlat.lesson.context" class="rich-text text-(--fg-2) leading-[1.7]" v-html="renderRichText(selectedFlat.lesson.context)"></div>
 
+        <InteractiveLesson
+          v-if="interactiveContent"
+          :key="selectedFlat.lesson.id"
+          :content="interactiveContent"
+          :class="selectedFlat.lesson.context && 'mt-8'"
+          @progress="interactiveComplete = $event.complete"
+        />
+
         <!--
           Simulation is checked first on purpose. A simulation lesson carries its scene id in
           contentReference, so any generic contentReference branch placed above this one would
           swallow it and offer an "Open Content" link to a scene id instead of running the lesson.
         -->
-        <template v-if="isSimulationLesson">
-          <SimulationFrame
-            v-if="simSessionId"
-            ref="simFrame"
-            :key="simSessionId"
-            :session-id="simSessionId"
-            mode="graded"
-            height="min(70vh, 620px)"
-            class="mt-6"
-            @graded="onSimulationGraded"
-            @frame-error="onSimulationError"
-          />
-          <RaCard v-else :padding="28" class="text-center mt-6">
-            <div class="text-sm font-semibold text-(--fg-1) mb-2">
-              {{ simState === 'error' ? 'This simulation could not be opened' : 'Preparing your simulation…' }}
-            </div>
-            <p v-if="simError" class="m-0 text-[13px] text-(--danger) max-w-120 mx-auto">{{ simError }}</p>
-            <RaButton v-if="simState === 'error'" variant="secondary" class="mt-3" @click="openSimulation">Try again</RaButton>
-          </RaCard>
-        </template>
+        <SimulationLesson
+          v-if="isSimulationLesson"
+          :key="selectedFlat.lesson.id"
+          :lesson-id="selectedFlat.lesson.id"
+          @graded="onSimulationGraded"
+          @open-lesson="selectLesson"
+        />
 
         <div v-else-if="lessonType === 'video' && selectedFlat.lesson.contentReference" class="mt-6">
           <div v-if="videoState === 'playing' && videoUrl" class="rounded-(--ra-xl) border border-(--line-1) overflow-hidden bg-black">
@@ -764,34 +734,21 @@ watch(() => route.params.id, load, { immediate: true })
         <div class="mt-8">
           <RaChip v-if="selectedState === 'done'" tone="student" class="py-2.5! px-4!">Completed</RaChip>
           <!--
-            A simulation lesson is completed by passing it, not by self-reporting. The engine
-            reports its result to the simulation service, which tells this backend over its own
-            channel; the button below only asks the engine to submit.
+            A simulation lesson is completed by passing it, not by self-reporting: Submit in the
+            simulator runs a graded attempt, and the server records the lesson for a pass.
           -->
-          <template v-else-if="isSimulationLesson">
-            <div v-if="simSessionId">
-              <RaButton :disabled="simState === 'submitting' || simState === 'recording'" @click="submitSimulation">
-                {{ simButtonLabel }}
-                <template #icon-right>
-                  <Loader2 v-if="simState === 'submitting' || simState === 'recording'" :size="14" class="animate-spin" />
-                  <ArrowRight v-else :size="14" />
-                </template>
-              </RaButton>
-              <p v-if="simResult" class="mt-2 mb-0 text-xs" :class="simResult.passed ? 'text-(--success)' : 'text-(--danger)'">
-                Scored {{ simResult.score }}% &mdash; {{ simResult.passed ? 'passed' : 'not passed yet, try again' }}.
-              </p>
-              <p v-if="simError" class="mt-2 mb-0 text-xs text-(--danger)">{{ simError }}</p>
-            </div>
-            <p v-else class="m-0 text-[13px] text-(--fg-3)">This simulation will be gradable once it opens.</p>
-          </template>
+          <p v-else-if="isSimulationLesson" class="m-0 text-[13px] text-(--fg-3)">
+            {{ simGraded?.passed ? 'Passed! Recording your progress…' : 'Use Submit in the simulator to complete this lesson.' }}
+          </p>
           <template v-else-if="selectedState === 'active'">
-            <RaButton :disabled="completeState === 'saving'" @click="markComplete">
+            <RaButton :disabled="completeState === 'saving' || (!!interactiveContent && !interactiveComplete)" @click="markComplete">
               {{ completeState === 'saving' ? 'Saving…' : 'Mark Complete & Continue' }}
               <template #icon-right>
                 <Loader2 v-if="completeState === 'saving'" :size="14" class="animate-spin" />
                 <ArrowRight v-else :size="14" />
               </template>
             </RaButton>
+            <p v-if="interactiveContent && !interactiveComplete" class="mt-2 mb-0 text-xs text-(--fg-3)">Finish the checks above to complete this lesson.</p>
             <p v-if="completeState === 'error'" class="mt-2 mb-0 text-xs text-(--danger)">{{ completeError }}</p>
           </template>
         </div>

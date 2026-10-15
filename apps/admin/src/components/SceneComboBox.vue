@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { X } from 'lucide-vue-next'
 import {
   ComboboxRoot,
   ComboboxAnchor,
@@ -11,32 +12,44 @@ import {
   ComboboxEmpty,
 } from 'reka-ui'
 import { cn } from '@roboacademy/ui'
-import { listSimulationScenes, type SimulationScene } from '@/api/roboticsLab'
+import { getSimulationScene, listSimulationScenes, type SimulationScene } from '@/api/roboticsLab'
 
 /**
- * Scene picker for Simulation lessons. The input text IS the scene ref: typing edits the saved
- * value directly and picking from the list overwrites it. That keeps the field showing exactly
- * what gets stored, which matters because reopening a lesson gives us only the stored id - there
- * is no name to display until the library loads, and it may never list a hand-typed ref at all.
+ * Scene picker for Simulation lessons. The stored value is the scene's id, but the field shows
+ * the scene's name: typing searches the library, and closing the list puts the selected name back.
+ * Reopening a lesson gives us only the stored id, so a name not in the loaded list is looked up
+ * on its own. Pasting a scene id selects it directly, for scenes the search doesn't surface.
  */
 const sceneRef = defineModel<string>({ required: true })
 
 const scenes = ref<SimulationScene[]>([])
 const searching = ref(false)
-// False once a fetch fails or comes back empty: the external app has no scene directory, so the
-// control degrades to the plain text box lessons were authored with before this existed.
+// False once a fetch fails or comes back empty (no scenes yet), so the control degrades to a plain
+// text box rather than an empty dropdown.
 const libraryAvailable = ref(false)
 let searchDebounce: ReturnType<typeof setTimeout> | undefined
 
-const matched = computed(
-  () => scenes.value.find((s) => s.sceneRef === sceneRef.value) ?? null,
-)
+/** Names seen so far by scene id, so the selection keeps its name after a search narrows the list. */
+const knownNames = ref<Record<string, string>>({})
+/** The selected id isn't a scene we can find (deleted, or a hand-typed ref). */
+const unresolved = ref(false)
+
+const selectedName = computed(() => (sceneRef.value ? knownNames.value[sceneRef.value] ?? null : null))
+
+const SCENE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function remember(list: SimulationScene[]) {
+  const next = { ...knownNames.value }
+  for (const scene of list) next[scene.sceneRef] = scene.name
+  knownNames.value = next
+}
 
 async function fetchScenes(query?: string) {
   searching.value = true
   try {
     const result = await listSimulationScenes(query)
     scenes.value = result
+    remember(result)
     if (result.length > 0) libraryAvailable.value = true
   } catch {
     scenes.value = []
@@ -46,16 +59,35 @@ async function fetchScenes(query?: string) {
   }
 }
 
-onMounted(() => fetchScenes())
+async function resolveName(id: string) {
+  unresolved.value = false
+  if (!id || knownNames.value[id]) return
+  try {
+    const scene = await getSimulationScene(id)
+    knownNames.value = { ...knownNames.value, [id]: scene.name }
+  } catch {
+    if (sceneRef.value === id) unresolved.value = true
+  }
+}
 
-function onInput(value: string) {
-  sceneRef.value = value
+onMounted(() => fetchScenes())
+watch(sceneRef, (id) => void resolveName(id), { immediate: true })
+
+function onSearch(event: Event) {
+  const value = (event.target as HTMLInputElement).value.trim()
+  if (SCENE_ID.test(value)) sceneRef.value = value
   clearTimeout(searchDebounce)
   searchDebounce = setTimeout(() => fetchScenes(value || undefined), 300)
 }
 
 function onSelect(value: string) {
   if (value) sceneRef.value = value
+}
+
+/** What the field shows when not being typed in. */
+function displayValue(id: unknown) {
+  if (typeof id !== 'string' || !id) return ''
+  return knownNames.value[id] ?? id
 }
 
 const inputClass =
@@ -77,17 +109,29 @@ const inputClass =
     v-else
     :model-value="sceneRef"
     ignore-filter
+    open-on-click
     class="relative"
     @update:model-value="(value) => onSelect(value as string)"
   >
-    <ComboboxAnchor>
+    <ComboboxAnchor class="relative">
+      <!-- Keyed by the shown name so the field updates when a stored id's name arrives. -->
       <ComboboxInput
         id="lesson-scene-reference"
-        :model-value="sceneRef"
+        :key="selectedName ?? sceneRef"
+        :display-value="displayValue"
         placeholder="Search scenes, or paste a scene ID"
-        :class="inputClass"
-        @update:model-value="(value) => onInput(value as string)"
+        :class="[inputClass, sceneRef && 'pr-8']"
+        @input="onSearch"
       />
+      <button
+        v-if="sceneRef"
+        type="button"
+        class="absolute top-1/2 right-1.5 inline-flex size-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-(--ra-sm) border-0 bg-transparent text-(--fg-4) hover:bg-(--bg-4) hover:text-(--fg-1)"
+        aria-label="Clear scene"
+        @click="sceneRef = ''"
+      >
+        <X :size="14" />
+      </button>
     </ComboboxAnchor>
 
     <ComboboxPortal>
@@ -122,10 +166,7 @@ const inputClass =
     </ComboboxPortal>
   </ComboboxRoot>
 
-  <p v-if="libraryAvailable && sceneRef" class="m-0 text-xs" :class="matched ? 'text-(--fg-3)' : 'text-(--fg-4)'">
-    <template v-if="matched">
-      Selected: <span class="font-semibold text-(--fg-1)">{{ matched.name }}</span>
-    </template>
-    <template v-else>Not in the scene library &mdash; will be saved as typed.</template>
+  <p v-if="libraryAvailable && sceneRef && unresolved" class="m-0 text-xs text-(--fg-4)">
+    Not in the scene library &mdash; will be saved as <span class="font-mono">{{ sceneRef }}</span>.
   </p>
 </template>

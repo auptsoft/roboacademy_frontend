@@ -466,14 +466,15 @@ const lessonSubmitting = ref(false)
 const lessonErrors = ref<Record<string, string[]>>({})
 const lessonForm = ref<LessonFormState>({
   title: '', type: 'Video', isRequired: true, allowUnenrolled: false, order: 1, context: '',
-  sceneReference: '',
+  sceneReference: '', programmingLanguage: 'Blocks', contentFile: null,
 })
 
 function openAddLesson(mod: CourseModuleItem) {
   lessonDialogTarget.value = { moduleId: mod.id, lesson: null }
   lessonForm.value = {
     title: '', type: 'Video', isRequired: true, allowUnenrolled: false,
-    order: orderedItems(mod).length + 1, context: '', sceneReference: '',
+    order: orderedItems(mod).length + 1, context: '', sceneReference: '', programmingLanguage: 'Blocks',
+    contentFile: null,
   }
   lessonErrors.value = {}
 }
@@ -486,6 +487,8 @@ function openEditLesson(moduleId: string, lesson: LessonItem) {
     // contentReference is type-agnostic on the backend; only Simulation's form shows it, but
     // prefilling regardless means it's not lost if the admin flips the type dropdown back and forth.
     sceneReference: lesson.contentReference ?? '',
+    programmingLanguage: lesson.programmingLanguage ?? 'Blocks',
+    contentFile: null,
   }
   lessonErrors.value = {}
 }
@@ -510,6 +513,7 @@ async function submitLessonDialog() {
       title: lessonForm.value.title, type: lessonForm.value.type, isRequired: lessonForm.value.isRequired,
       allowUnenrolled: lessonForm.value.allowUnenrolled,
       context: lessonForm.value.context || null, order: Number(lessonForm.value.order),
+      ...(lessonForm.value.type === 'Simulation' ? { programmingLanguage: lessonForm.value.programmingLanguage } : {}),
     })
     // Simulation has no upload step (unlike Video/Pdf's openUpload), so its reference is saved
     // here with the rest of the form rather than as its own immediate action.
@@ -518,9 +522,20 @@ async function submitLessonDialog() {
         courseId.value, moduleId, lessonId, lessonForm.value.sceneReference.trim() || null,
       )
     }
-    toast.success(lesson ? 'Lesson updated.' : 'Lesson added.')
+    // A file picked in Add mode goes up now that the lesson exists. The lesson is already
+    // saved, so a failed upload is reported on its own rather than as a failed save.
+    const pendingFile = !lesson && (lessonForm.value.type === 'Video' || lessonForm.value.type === 'Pdf')
+      ? lessonForm.value.contentFile
+      : null
     closeLessonDialog()
-    await loadCourse()
+    if (pendingFile) {
+      toast.success('Lesson added. Uploading content…')
+      const uploaded = await uploadLessonContent(moduleId, lessonId, pendingFile)
+      if (!uploaded) await loadCourse()
+    } else {
+      toast.success(lesson ? 'Lesson updated.' : 'Lesson added.')
+      await loadCourse()
+    }
   } catch (error) {
     if (error instanceof ApiError && error.fieldErrors) {
       lessonErrors.value = error.fieldErrors
@@ -614,7 +629,12 @@ async function onFileSelected(event: Event) {
   input.value = ''
   uploadTarget.value = null
   if (!file || !target) return
+  await uploadLessonContent(target.moduleId, target.lessonId, file)
+}
 
+/** Uploads a lesson's video/PDF and points the lesson at it. Resolves false if it failed. */
+async function uploadLessonContent(moduleId: string, lessonId: string, file: File): Promise<boolean> {
+  const target = { moduleId, lessonId }
   uploadingLessonId.value = target.lessonId
   try {
     const { uploadUrl, objectKey } = await getLessonContentUploadUrl(
@@ -633,8 +653,10 @@ async function onFileSelected(event: Event) {
     }
     toast.success('Content uploaded.')
     await loadCourse()
+    return true
   } catch (error) {
     toast.error(error instanceof ApiError ? error.message : 'Failed to upload content.')
+    return false
   } finally {
     uploadingLessonId.value = null
   }

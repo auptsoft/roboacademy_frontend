@@ -28,7 +28,11 @@ export interface LessonItem {
   allowUnenrolled: boolean
   contentReference: string | null
   context: string | null
+  /** Simulation lessons: the language learners program in, or Any to let them choose. */
+  programmingLanguage: ProgrammingLanguage
 }
+
+export type ProgrammingLanguage = 'Blocks' | 'JavaScript' | 'Python' | 'Any'
 
 export interface CourseModuleItem {
   id: string
@@ -185,7 +189,7 @@ export function updateLesson(
   courseId: string, moduleId: string, lessonId: string,
   request: {
     title: string; type: LessonType; isRequired: boolean; allowUnenrolled?: boolean; context?: string | null;
-    order?: number; targetModuleId?: string;
+    order?: number; targetModuleId?: string; programmingLanguage?: ProgrammingLanguage;
   },
 ): Promise<LessonItem> {
   return apiFetch(`/api/learning/courses/${courseId}/modules/${moduleId}/lessons/${lessonId}`, {

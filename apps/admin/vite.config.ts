@@ -12,7 +12,13 @@ export default defineConfig({
     fs: { allow: ['../..'] },
   },
   optimizeDeps: {
-    exclude: ['@roboacademy/ui'],
+    exclude: ['@roboacademy/ui', '@roboacademy/sim'],
+    // Reached only from the simulator's worker or lazily, so the dependency scan can miss them.
+    include: ['js-interpreter', 'blockly/core', 'blockly/blocks', 'blockly/javascript', 'blockly/msg/en', 'three', '@dimforge/rapier3d-compat'],
+  },
+  worker: {
+    // The simulator's program worker is a module worker (packages/sim/src/runtime/create-worker.ts).
+    format: 'es',
   },
   resolve: {
     alias: {
