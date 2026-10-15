@@ -143,7 +143,12 @@ const router = createRouter({
                 {
                     path: 'help/:slug',
                     component: () => import("@/pages/app/help-article.vue")
-                }
+                },
+
+                ...(import.meta.env.DEV ? [{
+                    path: 'dev/interactive-lesson',
+                    component: () => import("@/pages/app/dev-interactive-lesson.vue")
+                }] : [])
             ]
         },
 

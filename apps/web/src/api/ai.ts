@@ -1,6 +1,6 @@
 import { ApiError, apiFetch, apiHeaders, apiUrl, planErrorCodeOf } from '@/api/client'
 
-export type AIFeature = 'FeedbackDrafts' | 'Authoring' | 'Tutor' | 'Assistant'
+export type AIFeature = 'FeedbackDrafts' | 'Authoring' | 'Tutor' | 'Assistant' | 'SimHints'
 
 export interface AIFeatureAvailability {
   feature: AIFeature

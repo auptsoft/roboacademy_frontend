@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@roboacademy/sim": "*",
     "@roboacademy/ui": "*",
     "@tailwindcss/vite": "^4.2.4",
     "class-variance-authority": "^0.7.1",

@@ -120,6 +120,14 @@ const router = createRouter({
           component: () => import('@/pages/roboticslab/sessions.vue'),
         },
         {
+          path: 'roboticslab/scenes',
+          component: () => import('@/pages/roboticslab/scenes.vue'),
+        },
+        {
+          path: 'roboticslab/scenes/:sceneId',
+          component: () => import('@/pages/roboticslab/scene-editor.vue'),
+        },
+        {
           path: 'certificates',
           component: () => import('@/pages/certificates.vue'),
         },

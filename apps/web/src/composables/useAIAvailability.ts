@@ -8,5 +8,6 @@ export function useAIAvailability() {
   const feature = (name: AIFeature) => data.value?.features.find((f) => f.feature === name)
   const tutorAvailable = computed(() => feature('Tutor')?.available ?? false)
   const assistantAvailable = computed(() => feature('Assistant')?.available ?? false)
-  return { data, load, feature, tutorAvailable, assistantAvailable }
+  const simHintsAvailable = computed(() => feature('SimHints')?.available ?? false)
+  return { data, load, feature, tutorAvailable, assistantAvailable, simHintsAvailable }
 }

@@ -1,4 +1,5 @@
 import { apiFetch, apiFetchPaged, type PageMeta } from '@/api/client'
+import type { ObjectiveSet, SceneDefinition } from '@roboacademy/sim'
 
 export type PracticalMode = 'Simulation' | 'PhysicalRobot'
 export type PracticalStatus = 'Requested' | 'Scheduled' | 'InProgress' | 'Completed' | 'Cancelled' | 'Failed'
@@ -67,27 +68,89 @@ export function joinSession(sessionId: string): Promise<{ iframeUrl: string; exp
   return apiFetch(`/api/roboticslab/sessions/${sessionId}/join`)
 }
 
-// --- Simulation scenes ---
+// --- Simulation scenes (in-house simulator, packages/sim) ---
 
+export type SceneStatus = 'Draft' | 'Published'
+
+/** A scene in the library. `sceneRef` is the value stored on a Simulation lesson's contentReference. */
 export interface SimulationScene {
   sceneRef: string
   name: string
   description: string | null
   robotType: string | null
-  status: string
+  status: SceneStatus
   objectiveCount: number
   updatedAt: string | null
 }
 
-/**
- * The external app's scene library, used to populate the lesson editor's scene picker. Returns
- * an empty list when the external app has no scene endpoint, so callers must treat "no scenes"
- * as "no directory available" rather than "no scenes exist" - a lesson may still legitimately
- * reference a scene id this never lists.
- */
-export function listSimulationScenes(query?: string): Promise<SimulationScene[]> {
+export interface SimulationSceneDetail {
+  id: string
+  name: string
+  description: string | null
+  robotType: string
+  status: SceneStatus
+  objectiveCount: number
+  definition: SceneDefinition
+  objectives: ObjectiveSet
+  updatedAt: string
+}
+
+export interface SaveSceneRequest {
+  name: string
+  description: string | null
+  robotType: string
+  definition: SceneDefinition
+  objectives: ObjectiveSet
+}
+
+interface SceneSummaryResponse {
+  id: string
+  name: string
+  description: string | null
+  robotType: string
+  status: SceneStatus
+  objectiveCount: number
+  updatedAt: string
+}
+
+/** The scene library, used by the scenes page and the lesson editor's scene picker. */
+export async function listSimulationScenes(query?: string, status?: SceneStatus): Promise<SimulationScene[]> {
   const params = new URLSearchParams()
   if (query) params.set('q', query)
+  if (status) params.set('status', status)
   const suffix = params.toString() ? `?${params}` : ''
-  return apiFetch(`/api/roboticslab/scenes${suffix}`)
+  const scenes = await apiFetch<SceneSummaryResponse[]>(`/api/roboticslab/simulation/scenes${suffix}`)
+  return scenes.map((s) => ({
+    sceneRef: s.id,
+    name: s.name,
+    description: s.description,
+    robotType: s.robotType,
+    status: s.status,
+    objectiveCount: s.objectiveCount,
+    updatedAt: s.updatedAt,
+  }))
+}
+
+export function getSimulationScene(sceneId: string): Promise<SimulationSceneDetail> {
+  return apiFetch(`/api/roboticslab/simulation/scenes/${sceneId}`)
+}
+
+export function createSimulationScene(request: SaveSceneRequest): Promise<SimulationSceneDetail> {
+  return apiFetch('/api/roboticslab/simulation/scenes', { method: 'POST', body: JSON.stringify(request) })
+}
+
+export function updateSimulationScene(sceneId: string, request: SaveSceneRequest): Promise<SimulationSceneDetail> {
+  return apiFetch(`/api/roboticslab/simulation/scenes/${sceneId}`, { method: 'PUT', body: JSON.stringify(request) })
+}
+
+export function publishSimulationScene(sceneId: string): Promise<SimulationSceneDetail> {
+  return apiFetch(`/api/roboticslab/simulation/scenes/${sceneId}/publish`, { method: 'POST' })
+}
+
+export function unpublishSimulationScene(sceneId: string): Promise<SimulationSceneDetail> {
+  return apiFetch(`/api/roboticslab/simulation/scenes/${sceneId}/unpublish`, { method: 'POST' })
+}
+
+export function deleteSimulationScene(sceneId: string): Promise<void> {
+  return apiFetch(`/api/roboticslab/simulation/scenes/${sceneId}`, { method: 'DELETE' })
 }
