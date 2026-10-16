@@ -17,6 +17,8 @@ const props = defineProps<{
   // School-assigned enrolment, optionally with a deadline (omit dueAt once completed).
   assigned?: boolean
   dueAt?: string | null
+  // A paid course's price ("₦5,000"), or "Purchased" once bought.
+  price?: string | null
 }>()
 
 const emit = defineEmits<{ open: [] }>()
@@ -64,7 +66,8 @@ const statusTone: Record<CourseTileStatus, string> = {
       <span class="shrink-0">{{ props.metaRight }}</span>
     </div>
 
-    <div v-if="props.tag || props.status || props.assigned || dueLabel" class="flex flex-wrap gap-2 mt-3">
+    <div v-if="props.tag || props.status || props.assigned || dueLabel || props.price" class="flex flex-wrap gap-2 mt-3">
+      <span v-if="props.price" class="inline-flex items-center px-4 py-2 rounded-(--ra-md) bg-(--brand-blue-soft) text-(--brand-blue) text-[13px] font-semibold">{{ props.price }}</span>
       <span v-if="props.tag" class="inline-flex items-center px-6 py-2 rounded-(--ra-md) bg-(--bg-4) text-(--heading) text-[13px] font-medium uppercase">{{ props.tag }}</span>
       <span v-if="props.status" class="inline-flex items-center px-6 py-2 rounded-(--ra-md) text-[13px] font-medium" :class="statusTone[props.status]">{{ props.status }}</span>
       <span v-if="props.assigned && !dueLabel" class="inline-flex items-center px-4 py-2 rounded-(--ra-md) bg-(--bg-4) text-(--fg-2) text-[13px] font-medium">Assigned</span>

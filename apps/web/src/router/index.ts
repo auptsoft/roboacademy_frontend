@@ -146,6 +146,11 @@ const router = createRouter({
                 },
 
                 {
+                    path: 'payments/callback',
+                    component: () => import("@/pages/app/payment-callback.vue")
+                },
+
+                {
                     path: 'help',
                     component: () => import("@/pages/app/help.vue")
                 },

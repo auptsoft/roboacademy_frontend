@@ -12,6 +12,7 @@ export { default as RaThemeToggle } from './components/ui/RaThemeToggle.vue'
 
 export { cn } from './lib/utils'
 export { formatDate } from './lib/date'
+export { formatMoney, formatPrice, toMinorUnits } from './lib/money'
 export { useThemeSwitcher, applyTheme, initTheme, THEME_STORAGE_KEY } from './composables/theme-switcher'
 export type { ThemeMode } from './composables/theme-switcher'
 export { applyFavicon, applyDocumentTitle } from './composables/document-identity'

@@ -44,6 +44,14 @@ const router = createRouter({
           component: () => import('@/pages/ai-models.vue'),
         },
         {
+          path: 'payments/providers',
+          component: () => import('@/pages/payments/providers.vue'),
+        },
+        {
+          path: 'payments/orders',
+          component: () => import('@/pages/payments/orders.vue'),
+        },
+        {
           path: 'users',
           component: () => import('@/pages/users.vue'),
         },

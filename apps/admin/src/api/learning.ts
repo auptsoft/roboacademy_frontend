@@ -61,6 +61,13 @@ export interface CourseDetail {
   /** Whether this course's certificate needs a passed practical session. */
   requiresPractical: boolean
   modules: CourseModuleItem[]
+  /** Null for a free course. Amounts are in the minor unit (kobo). */
+  price: CoursePrice | null
+}
+
+export interface CoursePrice {
+  amountMinor: number
+  currency: string
 }
 
 export interface CourseCatalogItem {
@@ -145,6 +152,17 @@ export function setCourseVisibility(
   return apiFetch(`/api/learning/admin/courses/${courseId}/visibility`, {
     method: 'PUT',
     body: JSON.stringify({ visibility }),
+  })
+}
+
+// Payments Phase P1. amountMinor null makes the course free. Refusals carry a code in data
+// (not_public, price_out_of_range, unsupported_currency, no_payment_provider, payouts_not_configured).
+export function setCoursePrice(
+  courseId: string, amountMinor: number | null, currency: string | null,
+): Promise<{ id: string; price: CoursePrice | null }> {
+  return apiFetch(`/api/learning/admin/courses/${courseId}/price`, {
+    method: 'PUT',
+    body: JSON.stringify({ amountMinor, currency }),
   })
 }
 

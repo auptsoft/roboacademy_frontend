@@ -14,7 +14,9 @@ import CourseGeneralCard, { type CourseGeneralFormState } from '@/components/Cou
 import CoursePublishCard from '@/components/CoursePublishCard.vue'
 import CourseVisibilityCard from '@/components/CourseVisibilityCard.vue'
 import CourseCertificationCard from '@/components/CourseCertificationCard.vue'
+import CoursePriceCard from '@/components/CoursePriceCard.vue'
 import { hasPermission } from '@/store/auth'
+import { hasTenantFeature } from '@/branding'
 import CourseModuleHeader, { type CourseModuleEditForm } from '@/components/CourseModuleHeader.vue'
 import CourseItemRow from '@/components/CourseItemRow.vue'
 import LessonFormFields, { type LessonFormState } from '@/components/LessonFormFields.vue'
@@ -41,6 +43,7 @@ import {
   getCourseIntroVideoUrl,
   copyCourseToTenants,
   setCourseVisibility,
+  setCoursePrice,
   setCoursePracticalRequirement,
   visibilityLabel,
   type CourseDetail,
@@ -68,10 +71,13 @@ const canAuthor = hasPermission('learning:courses:author')
 const canManageVisibility = hasPermission('learning:courses:manage-visibility')
 const canManageEnrolments = hasPermission('learning:enrolments:manage')
 const canManageCertification = hasPermission('learning:courses:manage-certification-requirements')
+// Paid courses: the price permission, and a plan that includes selling.
+const canPrice = hasPermission('learning:courses:price') && hasTenantFeature('paid_courses')
 
 const sections = [
   ...(canAuthor ? [{ id: 'general', label: 'General' }, { id: 'modules', label: 'Modules, Lessons & Assessments' }] : []),
   ...(canManageVisibility ? [{ id: 'visibility', label: 'Visibility' }] : []),
+  ...(canPrice ? [{ id: 'price', label: 'Price' }] : []),
   ...(canManageCertification ? [{ id: 'certification', label: 'Certification' }] : []),
   ...(canAuthor ? [{ id: 'publish', label: 'Publish' }] : []),
 ]
@@ -346,6 +352,25 @@ async function saveVisibility(visibility: CourseVisibility) {
     toast.error(error instanceof ApiError ? error.message : 'Failed to update visibility.')
   } finally {
     savingVisibility.value = false
+  }
+}
+
+// --- Price ---
+const savingPrice = ref(false)
+const priceError = ref<string | null>(null)
+
+async function savePrice(amountMinor: number | null) {
+  if (!course.value) return
+  savingPrice.value = true
+  priceError.value = null
+  try {
+    const result = await setCoursePrice(courseId.value, amountMinor, amountMinor === null ? null : 'NGN')
+    course.value.price = result.price
+    toast.success(result.price ? 'Price saved.' : 'This course is now free.')
+  } catch (error) {
+    priceError.value = error instanceof ApiError ? error.message : 'Failed to save the price.'
+  } finally {
+    savingPrice.value = false
   }
 }
 
@@ -1132,6 +1157,15 @@ async function copyToTenants(targetTenantIds: string[]) {
             :state="course.state"
             :saving="savingVisibility"
             @save="saveVisibility"
+          />
+
+          <CoursePriceCard
+            v-if="canPrice"
+            :price="course.price"
+            :visibility="course.visibility"
+            :saving="savingPrice"
+            :error="priceError"
+            @save="savePrice"
           />
 
           <CourseCertificationCard
