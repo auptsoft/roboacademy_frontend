@@ -10,7 +10,7 @@ import { listTenants, type Tenant } from '@/api/tenancy'
 import { listUsers, getIdentityAuditLog, type AdminUser, type IdentityAuditLogItem } from '@/api/identity'
 import { listCourseCatalog, listLiveClasses } from '@/api/learning'
 import { listCertificates } from '@/api/certification'
-import { listSessions } from '@/api/roboticsLab'
+import { listAdminLabSessions } from '@/api/roboticsLab'
 import { listAttempts } from '@/api/assessment'
 import { hasPermission, getImpersonationTarget } from '@/store/auth'
 import { getTenantId } from '@/api/session'
@@ -99,8 +99,14 @@ const totalLiveClasses = useCount('live-classes', () => listLiveClasses(undefine
 const totalCertificates = useCount(
   'certificates', () => listCertificates({}, 1, 1), hasPermission('certification:certificates:issue'),
 )
+// Upcoming lab sessions: the list isn't paged, so its length is the count.
 const totalRoboticsSessions = useCount(
-  'robotics-sessions', () => listSessions({}, 1, 1), hasPermission('roboticslab:robots:manage'),
+  'robotics-sessions',
+  async () => {
+    const upcoming = (await listAdminLabSessions()).filter((s) => !['Ended', 'Unused', 'Cancelled'].includes(s.status))
+    return { meta: { page: 1, pageSize: upcoming.length, totalCount: upcoming.length, totalPages: 1 } }
+  },
+  hasPermission('roboticslab:labsessions:manage'),
 )
 const totalPendingGrading = useCount(
   'pending-grading', () => listAttempts({ status: 'Submitted' }, 1, 1), hasPermission('assessment:assessments:author'),
@@ -152,7 +158,7 @@ const activity = computed<IdentityAuditLogItem[]>(() => activityData.value?.item
       <RaKpi label="Live Classes" :value="totalLiveClasses === null ? '—' : String(totalLiveClasses)" class="ring-1 ring-inset ring-(--brand-blue-ring)" />
       <RaKpi v-if="hasPermission('assessment:assessments:author')" label="Pending Grading" :value="totalPendingGrading === null ? '—' : String(totalPendingGrading)" class="ring-1 ring-inset ring-(--brand-blue-ring)" />
       <RaKpi v-if="hasPermission('certification:certificates:issue')" label="Certificates Issued" :value="totalCertificates === null ? '—' : String(totalCertificates)" class="ring-1 ring-inset ring-(--brand-blue-ring)" />
-      <RaKpi v-if="hasPermission('roboticslab:robots:manage')" label="Robotics Sessions" :value="totalRoboticsSessions === null ? '—' : String(totalRoboticsSessions)" class="ring-1 ring-inset ring-(--brand-blue-ring)" />
+      <RaKpi v-if="hasPermission('roboticslab:labsessions:manage')" label="Upcoming Lab Sessions" :value="totalRoboticsSessions === null ? '—' : String(totalRoboticsSessions)" class="ring-1 ring-inset ring-(--brand-blue-ring)" />
     </div>
 
     <div class="grid grid-cols-2 gap-4 max-lg:grid-cols-1">

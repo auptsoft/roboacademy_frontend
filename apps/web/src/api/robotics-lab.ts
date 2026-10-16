@@ -1,60 +1,70 @@
-import { apiFetch, apiFetchPaged, type PageMeta } from '@/api/client'
+import { apiFetch } from '@/api/client'
 
-export type LabSessionMode = 'Simulation' | 'PhysicalRobot'
+/**
+ * Physical robot lab sessions (Robotics Lab Phase P1). RoboAcademy schedules them; botnova runs
+ * them, shown here in an iframe during the session's window.
+ */
 
-export interface LabSessionSummary {
+export type LabSessionStatus = 'Open' | 'Assigned' | 'Provisioned' | 'InProgress' | 'Ended' | 'Unused' | 'Cancelled'
+
+export type LabRequestStatus = 'Pending' | 'Approved' | 'Waitlisted' | 'Declined' | 'Expired' | 'Withdrawn'
+
+export interface LabSession {
   id: string
-  courseId: string
-  mode: LabSessionMode
-  status: string
-  scheduledStart: string | null
-}
-
-export interface LabSession extends LabSessionSummary {
-  lessonId: string | null
-  score: number | null
-  passed: boolean | null
-  completedAt: string | null
+  title: string
+  description: string | null
+  /** The botnova template the session runs: which robots, which control screen. */
+  templateName: string
+  startsAt: string
+  endsAt: string
+  status: LabSessionStatus
+  courseId: string | null
+  requiredLessonId: string | null
+  /** False when the session requires a simulation lesson the learner hasn't passed yet. */
+  meetsRequirement: boolean
+  assignedToMe: boolean
+  myRequestStatus: LabRequestStatus | null
+  attended: boolean
 }
 
 /**
- * A short-lived reference to the external simulation app. `accessToken` is scoped to this one
- * session and is handed to the iframe over postMessage rather than appended to `iframeUrl`,
- * keeping it out of browser history and referrer headers.
+ * A short-lived reference to botnova's control screen. The access token is handed to the iframe
+ * over postMessage, never put in the URL, so it stays out of browser history and referrers.
  */
 export interface LabSessionJoinInfo {
   iframeUrl: string
-  expiresAt: string
+  externalSessionId: string
   accessToken: string
+  expiresAt: string
+  endsAt: string
 }
 
-export function getMyLabSessions(params: { page?: number; pageSize?: number } = {}): Promise<{ data: LabSessionSummary[]; meta: PageMeta }> {
-  const query = new URLSearchParams()
-  query.set('page', String(params.page ?? 1))
-  query.set('pageSize', String(params.pageSize ?? 50))
-  return apiFetchPaged<LabSessionSummary>(`/api/roboticslab/sessions/me?${query.toString()}`)
+/** Upcoming sessions the learner can see and ask for. */
+export function listLabSessions(): Promise<LabSession[]> {
+  return apiFetch<LabSession[]>('/api/roboticslab/lab-sessions')
 }
 
-/**
- * Books a practical session. Simulation sessions are provisioned and scheduled in this single
- * call, so the returned id can be joined immediately; physical-robot sessions stay Requested
- * until an admin schedules them.
- */
-export function requestLabSession(body: {
-  courseId: string
-  lessonId?: string | null
-  mode: LabSessionMode
-}): Promise<{ id: string; mode: string; status: string }> {
-  return apiFetch('/api/roboticslab/sessions', {
+/** Sessions the learner has been given, upcoming and past. */
+export function listMyLabSessions(): Promise<LabSession[]> {
+  return apiFetch<LabSession[]>('/api/roboticslab/lab-sessions/mine')
+}
+
+export function getLabSession(labSessionId: string): Promise<LabSession> {
+  return apiFetch<LabSession>(`/api/roboticslab/lab-sessions/${labSessionId}`)
+}
+
+export function requestLabSession(labSessionId: string, message: string | null): Promise<LabSession> {
+  return apiFetch<LabSession>(`/api/roboticslab/lab-sessions/${labSessionId}/requests`, {
     method: 'POST',
-    body: JSON.stringify({ courseId: body.courseId, lessonId: body.lessonId ?? null, mode: body.mode }),
+    body: JSON.stringify({ message }),
   })
 }
 
-export function getLabSession(sessionId: string): Promise<LabSession> {
-  return apiFetch<LabSession>(`/api/roboticslab/sessions/${sessionId}`)
+/** Withdraws the learner's request, or gives up a session they were given. */
+export function withdrawLabSession(labSessionId: string): Promise<LabSession> {
+  return apiFetch<LabSession>(`/api/roboticslab/lab-sessions/${labSessionId}/requests/mine`, { method: 'DELETE' })
 }
 
-export function joinLabSession(sessionId: string): Promise<LabSessionJoinInfo> {
-  return apiFetch<LabSessionJoinInfo>(`/api/roboticslab/sessions/${sessionId}/join`)
+export function joinLabSession(labSessionId: string): Promise<LabSessionJoinInfo> {
+  return apiFetch<LabSessionJoinInfo>(`/api/roboticslab/lab-sessions/${labSessionId}/join`)
 }

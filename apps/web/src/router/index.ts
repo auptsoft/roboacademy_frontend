@@ -121,6 +121,16 @@ const router = createRouter({
                 },
 
                 {
+                    path: 'lab-sessions',
+                    component: () => import("@/pages/app/lab-sessions.vue")
+                },
+
+                {
+                    path: 'lab-sessions/:id',
+                    component: () => import("@/pages/app/lab-session-detail.vue")
+                },
+
+                {
                     path: 'certificates',
                     component: () => import("@/pages/app/certificates.vue")
                 },

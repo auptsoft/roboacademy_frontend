@@ -22,6 +22,9 @@ export interface AdminNavLeaf {
   // Hides this entry while viewing another tenant via enterTenant - for platform-wide screens
   // (e.g. the full Tenants list) that don't make sense to reach mid-impersonation.
   hiddenWhileImpersonating?: boolean
+  // For a school's own screens that platform operators hold every permission for but have no use
+  // for at home (they manage the platform's equivalents). Still shown while viewing a school.
+  schoolOnly?: boolean
   // A plan feature key (see the backend's PlanFeatureKeys). Hidden when the active tenant's plan
   // doesn't include it - the API rejects those calls anyway.
   feature?: string
@@ -83,8 +86,12 @@ export const adminNav: AdminNavEntry[] = [
     label: 'Robotics Lab',
     icon: Bot,
     items: [
-      { id: 'sessions', label: 'Sessions', icon: Bot, path: '/roboticslab/sessions', permission: 'roboticslab:robots:manage', feature: 'robotics_lab' },
+      { id: 'lab-sessions', label: 'Lab Sessions', icon: Bot, path: '/roboticslab/lab-sessions', permission: ['roboticslab:labsessions:manage', 'roboticslab:labsessions:approve-class'], feature: 'robotics_lab' },
+      { id: 'own-slots', label: 'Our Robot Time', icon: CalendarRange, path: '/roboticslab/own-slots', permission: 'roboticslab:providers:manage-own', feature: 'robotics_lab_own_providers', schoolOnly: true },
+      { id: 'own-provider', label: 'Our botnova Account', icon: Settings2, path: '/roboticslab/own-provider', permission: 'roboticslab:providers:manage-own', feature: 'robotics_lab_own_providers', schoolOnly: true },
       { id: 'scenes', label: 'Simulation Scenes', icon: Boxes, path: '/roboticslab/scenes', permission: 'roboticslab:scenes:author', feature: 'robotics_lab' },
+      { id: 'lab-slots', label: 'Robot Lab Slots', icon: CalendarRange, path: '/roboticslab/slots', permission: 'roboticslab:slots:manage' },
+      { id: 'lab-providers', label: 'Robot Lab Providers', icon: Settings2, path: '/roboticslab/providers', permission: 'roboticslab:providers:manage' },
     ],
   },
   { id: 'events', label: 'Events', icon: CalendarDays, path: '/events', permission: 'scheduling:events:manage', feature: 'events' },
