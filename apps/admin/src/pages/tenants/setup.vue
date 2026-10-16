@@ -11,6 +11,7 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/component
 import UserPreviewPopover from '@/components/UserPreviewPopover.vue'
 import TenantPlanCard from '@/components/TenantPlanCard.vue'
 import TenantAISettingsCard from '@/components/TenantAISettingsCard.vue'
+import TenantPaymentsCard from '@/components/TenantPaymentsCard.vue'
 import AuditLogFilters, { type AuditLogFilterState } from '@/components/AuditLogFilters.vue'
 import { ApiError, postImpersonationToken } from '@/api/client'
 import { enterTenant, getActiveTenantId, hasPermission, isImpersonating } from '@/store/auth'
@@ -44,6 +45,8 @@ const isPlatformTenant = computed(() => tenantId.value === PLATFORM_TENANT_ID)
 const canManage = hasPermission('tenancy:manage')
 const canManageOwn = canManage || hasPermission('tenancy:manage-own')
 const canImpersonate = hasPermission('tenancy:impersonate')
+// The platform admin's fee and payout view of a school (Payments Phase P2).
+const canManagePayments = hasPermission('payments:manage')
 
 // AI settings are always the caller's own active tenant (the API resolves it from the request),
 // so the section only appears when this page is showing that tenant - not another school a
@@ -535,6 +538,8 @@ watch(tenantId, async () => {
           />
 
           <TenantAISettingsCard v-if="showAI" :key="tenant.tenantId" v-model:open="aiOpen" />
+
+          <TenantPaymentsCard v-if="canManagePayments && !isPlatformTenant" :key="`payments-${tenant.tenantId}`" :tenant-id="tenant.tenantId" />
 
           <!-- Hosts -->
           <RaCard id="hosts" :padding="0" class="scroll-mt-6 overflow-hidden">

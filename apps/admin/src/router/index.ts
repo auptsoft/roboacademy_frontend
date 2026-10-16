@@ -52,6 +52,18 @@ const router = createRouter({
           component: () => import('@/pages/payments/orders.vue'),
         },
         {
+          path: 'payments/payouts',
+          component: () => import('@/pages/payments/payouts.vue'),
+        },
+        {
+          path: 'payments/payout',
+          component: () => import('@/pages/payments/payout.vue'),
+        },
+        {
+          path: 'payments/sales',
+          component: () => import('@/pages/payments/sales.vue'),
+        },
+        {
           path: 'users',
           component: () => import('@/pages/users.vue'),
         },

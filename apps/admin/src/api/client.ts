@@ -32,8 +32,11 @@ export class ApiError extends Error {
     this.planError = planError
   }
 
+  // Any other stable code the API put in data.code (e.g. payouts_not_configured).
+  dataCode?: string
+
   get code(): string | undefined {
-    return this.planError?.code
+    return this.planError?.code ?? this.dataCode
   }
 }
 
@@ -112,7 +115,10 @@ async function apiFetchEnvelope<T>(path: string, init: RequestInit = {}): Promis
     if (response.status === 403 && isSubscriptionExpired(envelope?.data)) {
       redirectToSubscriptionExpired()
     }
-    throw new ApiError(response.status, message, fieldErrors, planError)
+    const error = new ApiError(response.status, message, fieldErrors, planError)
+    const code = envelope?.data && typeof envelope.data === 'object' ? (envelope.data as { code?: unknown }).code : undefined
+    if (!planError && typeof code === 'string') error.dataCode = code
+    throw error
   }
 
   return (envelope as ApiEnvelope<T>) ?? { isSuccessful: true, message: '', data: null }

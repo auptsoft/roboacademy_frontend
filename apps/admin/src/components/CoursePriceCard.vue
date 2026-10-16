@@ -17,6 +17,8 @@ const props = defineProps<{
   saving: boolean
   // Shown under the form after a refused save (no provider, out of range, …).
   error: string | null
+  // The refusal was "set up payouts first": link to the Payouts page.
+  needsPayouts?: boolean
 }>()
 const emit = defineEmits<{ save: [amountMinor: number | null] }>()
 
@@ -73,7 +75,10 @@ function submit() {
           <p v-if="paid && visibility !== 'Public'" class="m-0 text-xs text-(--fg-3)">
             Only courses everyone can see in the catalog can be sold. Set Visibility to Public first.
           </p>
-          <p v-if="error" class="m-0 text-xs text-(--danger)">{{ error }}</p>
+          <p v-if="error" class="m-0 text-xs text-(--danger)">
+            {{ error }}
+            <RouterLink v-if="needsPayouts" to="/payments/payout" class="underline">Set up payouts</RouterLink>
+          </p>
           <div class="flex justify-end">
             <Button type="submit" :disabled="saving || unchanged || invalid">
               {{ saving ? 'Saving…' : 'Save price' }}

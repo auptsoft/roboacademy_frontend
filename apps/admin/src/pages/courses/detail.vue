@@ -358,17 +358,20 @@ async function saveVisibility(visibility: CourseVisibility) {
 // --- Price ---
 const savingPrice = ref(false)
 const priceError = ref<string | null>(null)
+const priceNeedsPayouts = ref(false)
 
 async function savePrice(amountMinor: number | null) {
   if (!course.value) return
   savingPrice.value = true
   priceError.value = null
+  priceNeedsPayouts.value = false
   try {
     const result = await setCoursePrice(courseId.value, amountMinor, amountMinor === null ? null : 'NGN')
     course.value.price = result.price
     toast.success(result.price ? 'Price saved.' : 'This course is now free.')
   } catch (error) {
     priceError.value = error instanceof ApiError ? error.message : 'Failed to save the price.'
+    priceNeedsPayouts.value = error instanceof ApiError && error.code === 'payouts_not_configured'
   } finally {
     savingPrice.value = false
   }
@@ -1165,6 +1168,7 @@ async function copyToTenants(targetTenantIds: string[]) {
             :visibility="course.visibility"
             :saving="savingPrice"
             :error="priceError"
+            :needs-payouts="priceNeedsPayouts"
             @save="savePrice"
           />
 

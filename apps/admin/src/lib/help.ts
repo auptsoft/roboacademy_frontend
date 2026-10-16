@@ -20,7 +20,7 @@ export const HELP_TOPICS: Record<string, { label: string; icon: Component }> = {
   plans: { label: 'Plans (platform)', icon: Layers },
   'ai-models': { label: 'AI models (platform)', icon: Sparkles },
   'content-library': { label: 'Content library (platform)', icon: Library },
-  payments: { label: 'Payments (platform)', icon: CreditCard },
+  payments: { label: 'Payments', icon: CreditCard },
 }
 
 export function helpTopicLabel(topic: string): string {
@@ -54,6 +54,9 @@ const PAGE_NAMES: Record<string, string> = {
   '/ai-models': 'AI Models',
   '/payments/providers': 'Payment Providers',
   '/payments/orders': 'Orders',
+  '/payments/payouts': 'Fees & Payouts',
+  '/payments/payout': 'Payouts',
+  '/payments/sales': 'Sales',
   '/audit': 'Audit Log',
   '/profile': 'Profile',
 }
