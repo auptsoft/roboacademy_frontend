@@ -1,13 +1,14 @@
 /** The languages learners program the simulator in. Matches the backend's ProgramLanguages. */
-export type ProgramLanguage = 'blocks' | 'javascript' | 'python'
+export type ProgramLanguage = 'blocks' | 'javascript' | 'python' | 'lua'
 
-/** Languages this build of the simulator can run. Python joins in step 2. */
-export const SUPPORTED_LANGUAGES: readonly ProgramLanguage[] = ['blocks', 'javascript']
+/** Languages this build of the simulator can run. */
+export const SUPPORTED_LANGUAGES: readonly ProgramLanguage[] = ['blocks', 'javascript', 'python', 'lua']
 
 export const LANGUAGE_LABELS: Record<ProgramLanguage, string> = {
   blocks: 'Blocks',
   javascript: 'JavaScript',
   python: 'Python',
+  lua: 'Lua',
 }
 
 /** A text-language program as stored with drafts and runs. Block programs are Blockly's JSON. */

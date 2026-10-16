@@ -68,6 +68,10 @@ const router = createRouter({
           component: () => import('@/pages/courses/detail.vue'),
         },
         {
+          path: 'courses/:courseId/modules/:moduleId/lessons/:lessonId/content',
+          component: () => import('@/pages/courses/lesson-content.vue'),
+        },
+        {
           path: 'enrollments',
           component: () => import('@/pages/enrollments/index.vue'),
         },

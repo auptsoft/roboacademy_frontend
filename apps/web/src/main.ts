@@ -5,6 +5,7 @@ import App from './App.vue'
 import router from './router'
 import UnknownTenantHost from './components/UnknownTenantHost.vue'
 import { resolveTenantFromHost } from './lib/tenant-from-host'
+import { startOfflineSync } from './lib/offline-sync'
 
 initTheme('light')
 
@@ -20,6 +21,7 @@ async function bootstrap(): Promise<void> {
   createApp(App)
     .use(router)
     .mount('#app')
+  startOfflineSync()
 }
 
 void bootstrap()

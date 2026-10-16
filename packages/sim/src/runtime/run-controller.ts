@@ -11,6 +11,8 @@ const MAX_STEPS_PER_ADVANCE = 8
 const SETTLE_MS = 500
 /** Real time a program may compute without waiting on the robot before it is stopped. */
 const COMPUTE_LIMIT_MS = 3000
+/** Real time a runtime may take to start (Python loads Pyodide first) before the run fails. */
+const START_LIMIT_MS = 45_000
 
 export interface WorkerLike {
   postMessage(message: HostToWorker): void
@@ -46,6 +48,8 @@ export class RunController {
   private accumulatorMs = 0
   private settleRemainingMs = SETTLE_MS
   private computingSinceMs = 0
+  private startedAtMs = 0
+  private programStarted = false
   private lastBlockId: string | null = null
 
   private readonly sim: Simulation
@@ -69,11 +73,18 @@ export class RunController {
     return this.ended
   }
 
+  /** False while the runtime is still starting up, e.g. loading Python. */
+  get isStarted(): boolean {
+    return this.programStarted
+  }
+
   start(code: string): void {
     const worker = this.createWorker()
     this.worker = worker
     worker.onmessage = (event) => this.onWorkerMessage(event.data)
     this.program = 'computing'
+    this.programStarted = false
+    this.startedAtMs = this.now()
     this.computingSinceMs = this.now()
     worker.postMessage({
       type: 'start',
@@ -90,6 +101,13 @@ export class RunController {
       // Don't let real time pile up while the program computes, or the world would jump ahead
       // once it resumes.
       this.accumulatorMs = 0
+      if (!this.programStarted) {
+        // Start-up time (loading a runtime) isn't the program's time.
+        if (this.now() - this.startedAtMs > START_LIMIT_MS) {
+          this.end('runtime_error', { message: 'The program could not be started. Check your connection and try again.', blockId: null })
+        }
+        return
+      }
       if (this.now() - this.computingSinceMs > COMPUTE_LIMIT_MS) {
         this.end('runtime_error', {
           message: 'Your program ran for a long time without the robot doing anything. Is there a loop that never ends?',
@@ -146,6 +164,10 @@ export class RunController {
   private onWorkerMessage(message: WorkerToHost): void {
     if (this.ended) return
     switch (message.type) {
+      case 'started':
+        this.programStarted = true
+        this.computingSinceMs = this.now()
+        break
       case 'call':
         this.onCall(message.id, message.kind, message.name, message.args)
         break
@@ -162,7 +184,7 @@ export class RunController {
         this.sim.halt()
         break
       case 'error':
-        this.end('runtime_error', { message: message.message, blockId: this.lastBlockId })
+        this.end('runtime_error', { message: message.message, blockId: message.location ?? this.lastBlockId })
         break
     }
   }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { AlertTriangle, Check, Copy, Loader2, RefreshCw } from 'lucide-vue-next'
-import { RaButton } from '@roboacademy/ui'
+import { RaButton, celebrationSoundEnabled, playChime, setCelebrationSoundEnabled } from '@roboacademy/ui'
 import {
   getDigestEnabled,
   getNotificationPreferences,
@@ -99,6 +99,15 @@ async function toggleDigest() {
   }
 }
 
+// Kept on this device rather than the account: whether a chime is welcome depends on where you are.
+const celebrationSound = ref(celebrationSoundEnabled())
+
+function toggleCelebrationSound() {
+  celebrationSound.value = !celebrationSound.value
+  setCelebrationSoundEnabled(celebrationSound.value)
+  if (celebrationSound.value) playChime() // a preview, so the learner knows what they turned on
+}
+
 const channels = [
   { key: 'inApp', label: 'In-app' },
   { key: 'email', label: 'Email' },
@@ -179,6 +188,29 @@ const channels = [
             />
           </button>
         </div>
+      </div>
+    </section>
+
+    <section class="bg-(--surface) rounded-(--ra-xl) shadow-(--surface-shadow) p-6 max-sm:p-4">
+      <h2 class="m-0 text-[22px] font-medium text-(--heading)">Celebrations</h2>
+      <div class="grid grid-cols-[1fr_auto] gap-4 items-center mt-5">
+        <div class="min-w-0">
+          <div class="text-sm font-medium text-(--heading)">Play a chime when you pass</div>
+          <div class="text-[13px] text-(--fg-3)">A short sound with the celebration for passing a lesson, assessment or course. Saved on this device only.</div>
+        </div>
+        <button
+          role="switch"
+          :aria-checked="celebrationSound"
+          aria-label="Play a chime when you pass"
+          class="relative w-10 h-6 rounded-(--ra-pill) border-0 p-0 cursor-pointer transition-colors duration-(--dur-1) ease-(--ease-out)"
+          :class="celebrationSound ? 'bg-(--brand-blue)' : 'bg-(--bg-4)'"
+          @click="toggleCelebrationSound"
+        >
+          <span
+            class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-(--dur-1) ease-(--ease-out)"
+            :class="celebrationSound ? 'translate-x-4' : 'translate-x-0'"
+          />
+        </button>
       </div>
     </section>
 

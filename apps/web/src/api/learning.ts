@@ -1,3 +1,4 @@
+import type { BlockResult } from '@roboacademy/ui'
 import { apiFetch, apiFetchPaged, type PageMeta } from '@/api/client'
 
 export interface CourseCatalogItem {
@@ -192,8 +193,8 @@ export interface CourseLessonDetail {
   // infra that doesn't exist yet, and context is raw HTML/Markdown lesson body.
   contentReference: string | null
   context: string | null
-  // Interactive lesson blocks (versioned JSON). Not served by the backend yet - see
-  // components/lesson-blocks/types.ts; parse with parseInteractiveContent before rendering.
+  // Interactive lessons only: block content (versioned JSON, see @roboacademy/ui lesson-blocks).
+  // Authored content, so parse with parseInteractiveContent before rendering.
   content?: unknown
 }
 
@@ -302,10 +303,51 @@ export interface RecordProgressResult {
 
 // Idempotent per lesson and batch-friendly — pass just the newly completed lesson id(s), no
 // need to resend the full completion history.
-export function recordLessonProgress(courseId: string, completedLessonIds: string[]): Promise<RecordProgressResult> {
+// offlineSync marks completions replayed from the device's offline queue (lib/offline-sync).
+export function recordLessonProgress(courseId: string, completedLessonIds: string[], offlineSync = false): Promise<RecordProgressResult> {
   return apiFetch<RecordProgressResult>('/api/learning/progress', {
     method: 'POST',
-    body: JSON.stringify({ courseId, completedLessonIds }),
+    body: JSON.stringify({ courseId, completedLessonIds, offlineSync }),
+  })
+}
+
+// ── Interactive lesson answers ──────────────────────────────────────────────
+
+/** Block-specific detail of an answer (choice picks, or a program's source). */
+type BlockAnswer = NonNullable<BlockResult['answer']> | null
+
+export interface LessonBlockResponse {
+  blockId: string
+  correct: boolean
+  firstTryCorrect: boolean
+  attempts: number
+  revealedAnswer: boolean
+  answer: BlockAnswer
+}
+
+export function listMyBlockResponses(courseId: string, lessonId: string): Promise<LessonBlockResponse[]> {
+  return apiFetch<LessonBlockResponse[]>(`/api/learning/courses/${courseId}/lessons/${lessonId}/block-responses`)
+}
+
+// The latest answer per block wins; safe to resend.
+export function recordBlockResponse(
+  courseId: string, lessonId: string,
+  request: { blockId: string; correct: boolean; attempts: number; revealedAnswer: boolean; answer: BlockAnswer },
+): Promise<LessonBlockResponse> {
+  return apiFetch<LessonBlockResponse>(`/api/learning/courses/${courseId}/lessons/${lessonId}/block-responses`, {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
+}
+
+// Signed URLs for an Interactive lesson's block files, in one call. They expire (expiresAt), so
+// fetch fresh ones each time the lesson opens; keys the caller can't read are left out.
+export function getLessonAssetUrls(
+  courseId: string, lessonId: string, keys: string[],
+): Promise<{ urls: Record<string, string>; expiresAt: string }> {
+  return apiFetch(`/api/learning/courses/${courseId}/lessons/${lessonId}/asset-urls`, {
+    method: 'POST',
+    body: JSON.stringify({ keys }),
   })
 }
 

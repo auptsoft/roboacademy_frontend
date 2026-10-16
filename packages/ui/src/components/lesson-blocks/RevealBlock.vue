@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { ChevronDown } from 'lucide-vue-next'
-import { renderRichText } from '@/lib/rich-text'
+import { renderRichText } from '../../lib/rich-text'
 import type { RevealBlock } from './types'
 
 // Explore-to-learn ("tap each part to see what it does"). Not a check: it never gates the lesson.

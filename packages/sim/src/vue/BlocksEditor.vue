@@ -13,6 +13,8 @@ const props = defineProps<{
   /** The block to highlight while a program runs. */
   highlightId?: string | null
   dark?: boolean
+  /** Defaults to the robot toolbox; Interactive lesson coding tasks pass one without robot blocks. */
+  toolbox?: Blockly.utils.toolbox.ToolboxDefinition
 }>()
 
 const emit = defineEmits<{
@@ -49,7 +51,7 @@ onMounted(() => {
   setAvailableSensors(props.capability, props.hiddenSensors ?? [])
 
   workspace = Blockly.inject(host.value, {
-    toolbox: props.readonly ? undefined : robotToolbox(),
+    toolbox: props.readonly ? undefined : (props.toolbox ?? robotToolbox()),
     readOnly: props.readonly ?? false,
     theme: theme(props.dark ?? false),
     trashcan: !props.readonly,

@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { RaChip } from '@roboacademy/ui'
-import InteractiveLesson from '@/components/lesson-blocks/InteractiveLesson.vue'
-import { sampleInteractiveLesson } from '@/components/lesson-blocks/sample-lesson'
+import { RaChip, RaInteractiveLesson } from '@roboacademy/ui'
+import { sampleInteractiveLesson } from '@/data/sample-interactive-lesson'
 
 // Dev-only preview of the interactive lesson renderer; the route is registered in DEV builds only.
 const complete = ref(false)
@@ -16,6 +15,6 @@ const complete = ref(false)
     </div>
     <h1 class="m-0 text-[32px] font-bold tracking-[-0.01em] text-(--fg-1)">Your first LED circuit</h1>
     <hr class="my-8 border-0 border-t border-(--line-1)" />
-    <InteractiveLesson :content="sampleInteractiveLesson" @progress="complete = $event.complete" />
+    <RaInteractiveLesson :content="sampleInteractiveLesson" @progress="complete = $event.complete" />
   </div>
 </template>

@@ -21,8 +21,8 @@ export interface SimulationLesson {
   lessonId: string
   courseId: string
   scene: SimulationScene
-  /** The author's setting: Blocks, JavaScript, Python, or Any (the learner chooses). */
-  languageSetting: 'Blocks' | 'JavaScript' | 'Python' | 'Any'
+  /** The author's setting: Blocks, JavaScript, Python, Lua, or Any (the learner chooses). */
+  languageSetting: 'Blocks' | 'JavaScript' | 'Python' | 'Lua' | 'Any'
   /** The languages the learner may use here. */
   languages: ProgramLanguage[]
   /** Per language: the learner's draft, or their last submitted program (Blockly JSON or `{ source }`). */

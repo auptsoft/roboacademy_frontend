@@ -1,4 +1,4 @@
-import type { InteractiveLessonContent } from './types'
+import type { InteractiveLessonContent } from '@roboacademy/ui'
 
 // Fixture for the dev preview page (/app/dev/interactive-lesson) until the backend serves
 // lesson content blocks.

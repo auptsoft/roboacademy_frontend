@@ -102,6 +102,7 @@ export class ProgramSession {
     // Regular-expression timeouts would spawn further workers from blob URLs. Generated block
     // code never uses regular expressions, so refuse them instead.
     this.interpreter.REGEXP_MODE = 0
+    this.post({ type: 'started' })
     this.run()
   }
 }

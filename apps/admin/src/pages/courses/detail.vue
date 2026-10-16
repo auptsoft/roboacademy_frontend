@@ -497,6 +497,11 @@ function closeLessonDialog() {
   lessonDialogTarget.value = null
 }
 
+// Interactive lessons' blocks are edited on their own page (pages/courses/lesson-content.vue).
+function openLessonContent(moduleId: string, lessonId: string) {
+  router.push(`/courses/${courseId.value}/modules/${moduleId}/lessons/${lessonId}/content`)
+}
+
 async function submitLessonDialog() {
   if (!lessonDialogTarget.value) return
   const { moduleId, lesson } = lessonDialogTarget.value
@@ -1069,6 +1074,7 @@ async function copyToTenants(targetTenantIds: string[]) {
                           :reordering="reordering"
                           :gated-by-title="gatedBy(orderedItems(mod), index)?.title ?? null"
                           @edit="openEditLesson(mod.id, item.lesson!)"
+                          @edit-content="openLessonContent(mod.id, item.lesson!.id)"
                           @open="openAssessment(item.id)"
                           @toggle-required="item.kind === 'lesson' ? toggleLessonRequired(mod.id, item.lesson!) : toggleAssessmentRequired(item.assessment!)"
                           @delete="item.kind === 'lesson' ? removeLesson(mod.id, item.lesson!) : removeAssessment(item.assessment!)"
@@ -1208,6 +1214,23 @@ async function copyToTenants(targetTenantIds: string[]) {
             @view="viewLessonContent(lessonDialogTarget!.moduleId, lessonDialogTarget!.lesson!)"
             @upload="openUpload(lessonDialogTarget!.moduleId, lessonDialogTarget!.lesson!.id)"
           />
+          <!-- Only once the lesson is saved as Interactive: the backend rejects blocks on other types. -->
+          <div
+            v-if="lessonDialogTarget?.lesson?.type === 'Interactive'"
+            class="flex items-center justify-between gap-3 rounded-(--ra-md) border border-(--line-2) bg-(--bg-3) p-3"
+          >
+            <div class="flex flex-col gap-0.5">
+              <span class="text-sm font-semibold text-(--fg-1)">Interactive content</span>
+              <span class="text-xs text-(--fg-3)">
+                {{ lessonDialogTarget.lesson.content?.blocks.length
+                  ? `${lessonDialogTarget.lesson.content.blocks.length} blocks`
+                  : 'No blocks yet' }}. Text, questions and activities, edited on their own page.
+              </span>
+            </div>
+            <Button variant="outline" size="sm" type="button" @click="openLessonContent(lessonDialogTarget.moduleId, lessonDialogTarget.lesson.id)">
+              Edit content
+            </Button>
+          </div>
           <DialogFooter>
             <Button variant="outline" type="button" @click="closeLessonDialog">Cancel</Button>
             <Button type="submit" :disabled="lessonSubmitting">
