@@ -120,8 +120,28 @@ const router = createRouter({
           component: () => import('@/pages/assessment/grading/index.vue'),
         },
         {
-          path: 'roboticslab/sessions',
-          component: () => import('@/pages/roboticslab/sessions.vue'),
+          path: 'roboticslab/lab-sessions',
+          component: () => import('@/pages/roboticslab/lab-sessions.vue'),
+        },
+        {
+          path: 'roboticslab/lab-sessions/:labSessionId',
+          component: () => import('@/pages/roboticslab/lab-session-detail.vue'),
+        },
+        {
+          path: 'roboticslab/own-provider',
+          component: () => import('@/pages/roboticslab/own-provider.vue'),
+        },
+        {
+          path: 'roboticslab/own-slots',
+          component: () => import('@/pages/roboticslab/own-slots.vue'),
+        },
+        {
+          path: 'roboticslab/providers',
+          component: () => import('@/pages/roboticslab/providers.vue'),
+        },
+        {
+          path: 'roboticslab/slots',
+          component: () => import('@/pages/roboticslab/slots.vue'),
         },
         {
           path: 'roboticslab/scenes',

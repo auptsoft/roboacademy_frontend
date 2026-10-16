@@ -1,4 +1,4 @@
-import { LayoutGrid, BookOpen, Radio, Compass, CalendarDays, Ticket } from 'lucide-vue-next'
+import { LayoutGrid, BookOpen, Radio, Compass, CalendarDays, Ticket, Bot } from 'lucide-vue-next'
 
 import type { TenantBranding } from '@/api/tenancy'
 import { hasFeature } from '@/branding'
@@ -12,6 +12,7 @@ export const mainNav: { id: string; label: string; icon: typeof LayoutGrid; path
   { id: 'live-sessions', label: 'Live Sessions', icon: Radio,   path: '/app/live-sessions', feature: 'live_classes' },
   { id: 'calendar',    label: 'Calendar',     icon: CalendarDays, path: '/app/calendar' },
   { id: 'events',      label: 'Events',       icon: Ticket,     path: '/app/events', mobile: false, feature: 'events' },
+  { id: 'robot-lab',   label: 'Robot lab',    icon: Bot,        path: '/app/lab-sessions', mobile: false, feature: 'robotics_lab' },
 ]
 
 export function navFor(branding: TenantBranding | null | undefined) {

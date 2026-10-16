@@ -32,6 +32,7 @@ function isOutsidePlan(item: AdminNavLeaf): boolean {
 
 function isVisible(item: AdminNavLeaf): boolean {
   if (item.hiddenWhileImpersonating && isImpersonating()) return false
+  if (item.schoolOnly && hasPermission('roboticslab:providers:manage') && !isImpersonating()) return false
   if (isOutsidePlan(item) && !seesGatedAreas) return false
   if (!item.permission) return true
   const required = Array.isArray(item.permission) ? item.permission : [item.permission]
