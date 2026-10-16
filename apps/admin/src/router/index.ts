@@ -64,6 +64,14 @@ const router = createRouter({
           component: () => import('@/pages/payments/sales.vue'),
         },
         {
+          path: 'payments/refunds',
+          component: () => import('@/pages/payments/refunds.vue'),
+        },
+        {
+          path: 'payments/reconciliation',
+          component: () => import('@/pages/payments/reconciliation.vue'),
+        },
+        {
           path: 'users',
           component: () => import('@/pages/users.vue'),
         },

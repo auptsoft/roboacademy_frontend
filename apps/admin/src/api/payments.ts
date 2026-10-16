@@ -66,7 +66,9 @@ export function deletePaymentProvider(providerId: string): Promise<void> {
   return apiFetch(`${platform}/providers/${providerId}`, { method: 'DELETE' })
 }
 
-export type OrderStatus = 'Pending' | 'Paid' | 'Failed' | 'Abandoned'
+export type OrderStatus = 'Pending' | 'Paid' | 'Failed' | 'Abandoned' | 'Refunded'
+export type DisputeStatus = 'Open' | 'Won' | 'Lost'
+export type RefundRequestStatus = 'Requested' | 'Processing' | 'Completed' | 'Rejected' | 'Failed'
 
 export interface PlatformOrder {
   id: string
@@ -88,6 +90,11 @@ export interface PlatformOrder {
   providerTransactionId: string | null
   createdAt: string
   paidAt: string | null
+  disputeStatus: DisputeStatus | null
+  disputeOpenedAt: string | null
+  refundedAt: string | null
+  /** The latest refund request's status, if any. */
+  refundStatus: RefundRequestStatus | null
 }
 
 export interface PlatformOrderFilters {
@@ -95,6 +102,7 @@ export interface PlatformOrderFilters {
   tenantId?: string
   search?: string
   issuesOnly?: boolean
+  disputedOnly?: boolean
 }
 
 export function listPlatformOrders(
@@ -105,6 +113,7 @@ export function listPlatformOrders(
   if (filters.tenantId) params.set('tenantId', filters.tenantId)
   if (filters.search) params.set('search', filters.search)
   if (filters.issuesOnly) params.set('issuesOnly', 'true')
+  if (filters.disputedOnly) params.set('disputedOnly', 'true')
   return apiFetchPaged<PlatformOrder>(`${platform}/orders?${params}`)
 }
 
@@ -181,6 +190,8 @@ export interface Sale {
   status: OrderStatus
   createdAt: string
   paidAt: string | null
+  refundStatus: RefundRequestStatus | null
+  disputeStatus: DisputeStatus | null
 }
 
 export interface SalesFilters {
@@ -288,4 +299,95 @@ export function describeFee(rule: FeeRule, money: (minor: number) => string): st
   if (rule.flatMinor) parts.push(`+ ${money(rule.flatMinor)}`)
   const text = parts.join(' ')
   return rule.capMinor ? `${text}, max ${money(rule.capMinor)}` : text
+}
+
+// --- Phase P3: refunds, disputes, reconciliation ---
+
+export interface RefundRequest {
+  id: string
+  tenantId: string
+  orderId: string
+  reference: string
+  courseTitle: string
+  amountMinor: number
+  currency: string
+  requestedByUserId: string | null
+  requestedByName: string | null
+  reason: string
+  status: RefundRequestStatus
+  decisionNote: string | null
+  failureReason: string | null
+  createdAt: string
+  updatedAt: string
+  completedAt: string | null
+}
+
+/** School: ask RoboAcademy to refund one of its paid orders. */
+export function requestRefund(orderId: string, reason: string): Promise<RefundRequest> {
+  return apiFetch(`${school}/orders/${orderId}/refund-requests`, { method: 'POST', body: JSON.stringify({ reason }) })
+}
+
+export function listSchoolRefundRequests(): Promise<RefundRequest[]> {
+  return apiFetch(`${school}/refund-requests`)
+}
+
+export function listRefundRequests(
+  status: RefundRequestStatus | '' = '', page = 1, pageSize = 20,
+): Promise<{ items: RefundRequest[]; meta: PageMeta }> {
+  const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
+  if (status) params.set('status', status)
+  return apiFetchPaged<RefundRequest>(`${platform}/refund-requests?${params}`)
+}
+
+/** Approves (or retries a failed) refund; it's sent to the provider straight away. */
+export function approveRefund(requestId: string, note: string | null): Promise<RefundRequest> {
+  return apiFetch(`${platform}/refund-requests/${requestId}/approve`, { method: 'POST', body: JSON.stringify({ note }) })
+}
+
+export function rejectRefund(requestId: string, note: string): Promise<RefundRequest> {
+  return apiFetch(`${platform}/refund-requests/${requestId}/reject`, { method: 'POST', body: JSON.stringify({ note }) })
+}
+
+export function refundOrder(orderId: string, reason: string): Promise<RefundRequest> {
+  return apiFetch(`${platform}/orders/${orderId}/refund`, { method: 'POST', body: JSON.stringify({ reason }) })
+}
+
+export type ReconciliationIssueKind = 'MissingOrder' | 'MissingPayment' | 'AmountMismatch' | 'StatusMismatch'
+
+export interface ReconciliationIssue {
+  id: string
+  providerId: string
+  kind: ReconciliationIssueKind
+  reference: string
+  providerTransactionId: string | null
+  details: string
+  foundAt: string
+  resolvedAt: string | null
+  resolutionNote: string | null
+}
+
+export function listReconciliationIssues(
+  includeResolved = false, page = 1, pageSize = 20,
+): Promise<{ items: ReconciliationIssue[]; meta: PageMeta }> {
+  const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
+  if (includeResolved) params.set('includeResolved', 'true')
+  return apiFetchPaged<ReconciliationIssue>(`${platform}/reconciliation-issues?${params}`)
+}
+
+export function resolveReconciliationIssue(issueId: string, note: string): Promise<ReconciliationIssue> {
+  return apiFetch(`${platform}/reconciliation-issues/${issueId}/resolve`, { method: 'POST', body: JSON.stringify({ note }) })
+}
+
+export const REFUND_STATUS_LABEL: Record<RefundRequestStatus, string> = {
+  Requested: 'Refund requested',
+  Processing: 'Refund processing',
+  Completed: 'Refunded',
+  Rejected: 'Refund declined',
+  Failed: 'Refund failed',
+}
+
+/** Whether a refund can be asked for: paid, not disputed, and no refund already waiting. */
+export function canRequestRefund(order: { status: OrderStatus; disputeStatus: DisputeStatus | null; refundStatus: RefundRequestStatus | null }): boolean {
+  return order.status === 'Paid' && order.disputeStatus !== 'Open'
+    && order.refundStatus !== 'Requested' && order.refundStatus !== 'Processing'
 }

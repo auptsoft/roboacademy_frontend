@@ -1,22 +1,38 @@
 <script setup lang="ts">
-import { onMounted, reactive, watch } from 'vue'
+import { onMounted, reactive, ref, watch } from 'vue'
+import { toast } from 'vue-sonner'
 import { RaCard, RaChip, formatDate, formatMoney } from '@roboacademy/ui'
+import { MoreVertical } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import Input from '@/components/ui/input.vue'
 import Pagination from '@/components/Pagination.vue'
+import ReasonDialog from '@/components/ReasonDialog.vue'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { ApiError } from '@/api/client'
 import { usePagedList } from '@/composables/usePagedList'
-import { listPlatformOrders, type OrderStatus, type PlatformOrder } from '@/api/payments'
+import {
+  REFUND_STATUS_LABEL,
+  canRequestRefund,
+  listPlatformOrders,
+  refundOrder,
+  type OrderStatus,
+  type PlatformOrder,
+} from '@/api/payments'
 
-// Every course order across all tenants (Payments Phase P1), for support and spotting problems.
-// Read-only: refunds are made in the provider's dashboard until Phase P3.
+// Every course order across all tenants (Payments Phases P1-P3), for support and spotting
+// problems. A paid order can be refunded from its menu; disputes are answered in the provider's
+// dashboard and show here as they change.
 
-const filters = reactive<{ status: OrderStatus | ''; search: string; issuesOnly: boolean }>({
-  status: '', search: '', issuesOnly: false,
+const filters = reactive<{ status: OrderStatus | ''; search: string; issuesOnly: boolean; disputedOnly: boolean }>({
+  status: '', search: '', issuesOnly: false, disputedOnly: false,
 })
 
 const { items: orders, loading, page, pageSize, meta, totalPages, load, goToPage, setPageSize } = usePagedList(
   (page, pageSize) => listPlatformOrders(
-    { status: filters.status || undefined, search: filters.search.trim() || undefined, issuesOnly: filters.issuesOnly },
+    {
+      status: filters.status || undefined, search: filters.search.trim() || undefined,
+      issuesOnly: filters.issuesOnly, disputedOnly: filters.disputedOnly,
+    },
     page,
     pageSize,
   ),
@@ -26,7 +42,7 @@ const { items: orders, loading, page, pageSize, meta, totalPages, load, goToPage
 onMounted(load)
 
 let searchTimer: ReturnType<typeof setTimeout> | undefined
-watch(() => [filters.status, filters.issuesOnly], () => {
+watch(() => [filters.status, filters.issuesOnly, filters.disputedOnly], () => {
   page.value = 1
   load()
 })
@@ -39,17 +55,58 @@ watch(() => filters.search, () => {
 })
 
 function clearFilters() {
-  Object.assign(filters, { status: '', search: '', issuesOnly: false })
+  Object.assign(filters, { status: '', search: '', issuesOnly: false, disputedOnly: false })
 }
 
 function statusTone(order: PlatformOrder): 'info' | 'neutral' {
-  return order.status === 'Paid' ? 'info' : 'neutral'
+  return order.status === 'Paid' && order.disputeStatus !== 'Open' ? 'info' : 'neutral'
 }
+
+function statusLabel(order: PlatformOrder): string {
+  if (order.disputeStatus === 'Open') return 'Disputed'
+  if (order.status === 'Paid' && (order.refundStatus === 'Requested' || order.refundStatus === 'Processing' || order.refundStatus === 'Failed')) {
+    return REFUND_STATUS_LABEL[order.refundStatus]
+  }
+  return order.status
+}
+
+// --- Refund straight away (Phase P3) ---
+const refundTarget = ref<PlatformOrder | null>(null)
+const refunding = ref(false)
+const refundError = ref<string | null>(null)
+
+function openRefund(order: PlatformOrder) {
+  refundTarget.value = order
+  refundError.value = null
+}
+
+async function submitRefund(reason: string) {
+  if (!refundTarget.value) return
+  refunding.value = true
+  refundError.value = null
+  try {
+    const result = await refundOrder(refundTarget.value.id, reason)
+    if (result.status === 'Failed') {
+      refundError.value = result.failureReason ?? 'The payment provider refused the refund.'
+    } else {
+      toast.success(result.status === 'Completed' ? 'Refunded.' : 'Refund sent. It completes when the provider confirms.')
+      refundTarget.value = null
+    }
+    await load()
+  } catch (error) {
+    refundError.value = error instanceof ApiError ? error.message : 'Failed to refund.'
+  } finally {
+    refunding.value = false
+  }
+}
+
+const menuTriggerClass =
+  'inline-flex size-9 items-center justify-center rounded-none border border-transparent bg-transparent text-(--fg-3) outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-50'
 
 const selectClass =
   'h-9 rounded-(--ra-md) border border-(--line-2) bg-(--bg-3) px-2.5 text-sm text-(--fg-2) outline-none'
 
-const columns = 'grid grid-cols-[1.6fr_1.4fr_120px_100px_150px] items-center gap-3'
+const columns = 'grid grid-cols-[1.6fr_1.4fr_120px_140px_150px_44px] items-center gap-3'
 </script>
 
 <template>
@@ -57,7 +114,7 @@ const columns = 'grid grid-cols-[1.6fr_1.4fr_120px_100px_150px] items-center gap
     <div>
       <h1 class="m-0 text-[32px] font-bold tracking-[-0.01em] text-(--fg-1)">Orders</h1>
       <p class="mt-1.5 text-sm text-(--fg-3)">
-        Course purchases across every school. Refunds are made in the payment provider's dashboard for now.
+        Course purchases across every school. Refund a paid order from its menu; schools' refund requests are under Refunds.
       </p>
     </div>
 
@@ -70,13 +127,18 @@ const columns = 'grid grid-cols-[1.6fr_1.4fr_120px_100px_150px] items-center gap
           <option value="Pending">Pending</option>
           <option value="Failed">Failed</option>
           <option value="Abandoned">Abandoned</option>
+          <option value="Refunded">Refunded</option>
         </select>
         <label class="flex items-center gap-2 text-sm text-(--fg-2)">
           <input v-model="filters.issuesOnly" type="checkbox" class="size-4 accent-(--brand-blue)">
           Needs attention
         </label>
+        <label class="flex items-center gap-2 text-sm text-(--fg-2)">
+          <input v-model="filters.disputedOnly" type="checkbox" class="size-4 accent-(--brand-blue)">
+          Disputed
+        </label>
         <Button
-          v-if="filters.status || filters.search || filters.issuesOnly"
+          v-if="filters.status || filters.search || filters.issuesOnly || filters.disputedOnly"
           variant="ghost"
           size="sm"
           @click="clearFilters"
@@ -89,6 +151,7 @@ const columns = 'grid grid-cols-[1.6fr_1.4fr_120px_100px_150px] items-center gap
         <span>Amount</span>
         <span>Status</span>
         <span>Date</span>
+        <span />
       </div>
 
       <p v-if="loading" class="p-6 text-center text-[13px] text-(--fg-3)">Loading orders…</p>
@@ -114,9 +177,38 @@ const columns = 'grid grid-cols-[1.6fr_1.4fr_120px_100px_150px] items-center gap
             Fee {{ formatMoney(order.providerFeeMinor, order.currency) }}
           </span>
         </div>
-        <div><RaChip :tone="statusTone(order)">{{ order.status }}</RaChip></div>
-        <div class="text-sm text-(--fg-2)">{{ formatDate(order.paidAt ?? order.createdAt) }}</div>
+        <div class="flex flex-col items-start gap-1">
+          <RaChip :tone="statusTone(order)">{{ statusLabel(order) }}</RaChip>
+          <span v-if="order.disputeStatus && order.disputeStatus !== 'Open'" class="text-[11px] text-(--fg-4)">
+            Dispute {{ order.disputeStatus.toLowerCase() }}
+          </span>
+        </div>
+        <div class="text-sm text-(--fg-2)">{{ formatDate(order.refundedAt ?? order.paidAt ?? order.createdAt) }}</div>
+        <div class="flex justify-end">
+          <DropdownMenu v-if="canRequestRefund(order)">
+            <DropdownMenuTrigger :class="menuTriggerClass">
+              <MoreVertical :size="16" />
+              <span class="sr-only">Actions for {{ order.reference }}</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem @select="openRefund(order)">Refund…</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
+
+      <ReasonDialog
+        :open="refundTarget !== null"
+        title="Refund this order"
+        :description="refundTarget ? `${refundTarget.buyerName ?? 'The learner'} gets back ${formatMoney(refundTarget.amountMinor, refundTarget.currency)} and loses access to ${refundTarget.courseTitle}, unless it was also assigned to them.` : undefined"
+        label="Reason (kept with the order)"
+        confirm-label="Refund"
+        destructive
+        :pending="refunding"
+        :error="refundError"
+        @update:open="(open) => { if (!open) refundTarget = null }"
+        @submit="submitRefund"
+      />
 
       <Pagination
         :page="page"

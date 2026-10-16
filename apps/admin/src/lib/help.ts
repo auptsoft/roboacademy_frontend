@@ -57,6 +57,8 @@ const PAGE_NAMES: Record<string, string> = {
   '/payments/payouts': 'Fees & Payouts',
   '/payments/payout': 'Payouts',
   '/payments/sales': 'Sales',
+  '/payments/refunds': 'Refunds',
+  '/payments/reconciliation': 'Reconciliation',
   '/audit': 'Audit Log',
   '/profile': 'Profile',
 }

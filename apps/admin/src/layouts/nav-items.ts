@@ -1,7 +1,7 @@
 import {
   LayoutGrid, Users, Building2, Settings2, GraduationCap, ScrollText,
   BookOpen, Route, Video, ClipboardList, HelpCircle, FileQuestion, Bot, BadgeCheck, ClipboardCheck,
-  UserCheck, CalendarDays, CalendarRange, Megaphone, Layers, Sparkles, LifeBuoy, Boxes, CreditCard, Receipt, Landmark,
+  UserCheck, CalendarDays, CalendarRange, Megaphone, Layers, Sparkles, LifeBuoy, Boxes, CreditCard, Receipt, Landmark, Undo2, Scale,
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
 import { getActiveTenantId } from '@/store/auth'
@@ -110,6 +110,8 @@ export const adminNav: AdminNavEntry[] = [
       { id: 'school-sales', label: 'Sales', icon: Receipt, path: '/payments/sales', permission: 'payments:manage-own', feature: 'paid_courses', schoolOnly: true },
       { id: 'school-payout', label: 'Payouts', icon: Landmark, path: '/payments/payout', permission: 'payments:manage-own', feature: 'paid_courses', schoolOnly: true },
       { id: 'payment-orders', label: 'Orders', icon: Receipt, path: '/payments/orders', permission: 'payments:manage', hiddenWhileImpersonating: true },
+      { id: 'payment-refunds', label: 'Refunds', icon: Undo2, path: '/payments/refunds', permission: 'payments:manage', hiddenWhileImpersonating: true },
+      { id: 'payment-reconciliation', label: 'Reconciliation', icon: Scale, path: '/payments/reconciliation', permission: 'payments:manage', hiddenWhileImpersonating: true },
       { id: 'payment-payouts', label: 'Fees & Payouts', icon: Landmark, path: '/payments/payouts', permission: 'payments:manage', hiddenWhileImpersonating: true },
       { id: 'payment-providers', label: 'Payment Providers', icon: Settings2, path: '/payments/providers', permission: 'payments:manage', hiddenWhileImpersonating: true },
     ],

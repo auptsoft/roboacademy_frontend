@@ -22,7 +22,7 @@ onMounted(async () => {
 <template>
   <section v-if="orders.length" class="bg-(--surface) rounded-(--ra-xl) shadow-(--surface-shadow) p-6 max-sm:p-4">
     <h2 class="m-0 text-[22px] font-medium text-(--heading)">Purchases</h2>
-    <p class="m-0 mt-1 mb-5 text-[13px] text-(--fg-3)">Courses you've bought. Receipts were sent to your email.</p>
+    <p class="m-0 mt-1 mb-5 text-[13px] text-(--fg-3)">Courses you've bought, and any refunds. Receipts were sent to your email.</p>
     <ul class="m-0 flex list-none flex-col p-0">
       <li
         v-for="order in orders"
@@ -34,7 +34,10 @@ onMounted(async () => {
           class="min-w-0 truncate border-0 bg-transparent p-0 text-left text-sm font-medium text-(--heading) cursor-pointer hover:underline"
           @click="router.push(`/app/courses/${order.courseId}`)"
         >{{ order.courseTitle }}</button>
-        <span class="text-sm text-(--fg-1)">{{ formatMoney(order.amountMinor, order.currency) }}</span>
+        <span class="text-sm text-(--fg-1)">
+          <span v-if="order.status === 'Refunded'" class="mr-2 text-xs text-(--fg-3)">Refunded</span>
+          <span :class="order.status === 'Refunded' && 'line-through text-(--fg-3)'">{{ formatMoney(order.amountMinor, order.currency) }}</span>
+        </span>
         <span class="text-xs text-(--fg-3)">{{ order.paidAt ? new Date(order.paidAt).toLocaleDateString() : '' }}</span>
         <span class="font-mono text-[11px] text-(--fg-4)">{{ order.reference }}</span>
       </li>

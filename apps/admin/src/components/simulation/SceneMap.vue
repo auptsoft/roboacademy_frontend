@@ -7,7 +7,11 @@ import { getCapability, sceneRobots, type SceneDefinition } from '@roboacademy/s
  * the simulator; headings and wall rotations are counter-clockwise, so SVG rotates by -angle.
  * Clicking the floor reports the point, which the editor uses to place the main robot.
  */
-const props = defineProps<{ scene: SceneDefinition }>()
+const props = defineProps<{
+  scene: SceneDefinition
+  /** Shapes to show dashed over the floor, such as drawings learners must trace. */
+  guides?: { points: { x: number; z: number }[]; closed: boolean }[]
+}>()
 const emit = defineEmits<{ place: [point: { x: number; z: number }] }>()
 
 const width = computed(() => props.scene.arena.width)
@@ -88,6 +92,16 @@ function onClick(event: MouseEvent) {
       :height="wall.thickness"
       fill="#8795a3"
       :transform="`translate(${wall.x} ${wall.z}) rotate(${-wall.rotationDeg})`"
+    />
+    <component
+      :is="guide.closed ? 'polygon' : 'polyline'"
+      v-for="(guide, i) in guides ?? []"
+      :key="`guide-${i}`"
+      :points="guide.points.map((p) => `${p.x},${p.z}`).join(' ')"
+      fill="none"
+      stroke="#8e4ec6"
+      stroke-width="0.008"
+      stroke-dasharray="0.03 0.02"
     />
     <template v-for="prop in scene.props" :key="prop.id">
       <circle v-if="prop.shape !== 'box'" :cx="prop.x" :cy="prop.z" :r="prop.size.x" :fill="prop.color" />

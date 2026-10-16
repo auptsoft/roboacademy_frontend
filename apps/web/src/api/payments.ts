@@ -3,7 +3,7 @@ import { apiFetch } from '@/api/client'
 // Payments Phase P1: buying a course. Checkout returns the provider's page to send the learner
 // to; the provider sends them back to /app/payments/callback?reference=…, which polls the order.
 
-export type OrderStatus = 'Pending' | 'Paid' | 'Failed' | 'Abandoned'
+export type OrderStatus = 'Pending' | 'Paid' | 'Failed' | 'Abandoned' | 'Refunded'
 
 export interface MyOrder {
   id: string
