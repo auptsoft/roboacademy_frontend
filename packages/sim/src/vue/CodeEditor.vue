@@ -5,11 +5,16 @@ import { Compartment, EditorState, StateEffect, StateField, type Extension } fro
 import { Decoration, type DecorationSet } from '@codemirror/view'
 import type { CompletionContext, CompletionResult } from '@codemirror/autocomplete'
 import { javascript, javascriptLanguage } from '@codemirror/lang-javascript'
-import { ROBOT_JS_API } from '../languages/javascript/api'
+import { python, pythonLanguage } from '@codemirror/lang-python'
+import { StreamLanguage } from '@codemirror/language'
+import { lua } from '@codemirror/legacy-modes/mode/lua'
+import { ROBOT_JS_API, type ApiEntry } from '../languages/javascript/api'
+import { ROBOT_PY_API } from '../languages/python/api'
+import { ROBOT_LUA_API } from '../languages/lua/api'
 import type { ProgramLanguage } from '../languages/types'
 
 /**
- * The text editor for JavaScript (and, later, Python) programs: CodeMirror with autocomplete for
+ * The text editor for JavaScript, Python and Lua programs: CodeMirror with autocomplete for
  * the `robot` API, the running line highlighted, and the line an error came from marked.
  */
 const props = defineProps<{
@@ -56,12 +61,12 @@ const lineMarks = StateField.define<DecorationSet>({
 })
 
 /** `robot.` completions, with signatures and descriptions. */
-function robotCompletions(context: CompletionContext): CompletionResult | null {
+const robotCompletions = (api: ApiEntry[]) => (context: CompletionContext): CompletionResult | null => {
   const word = context.matchBefore(/robot\.\w*/)
   if (!word) return null
   return {
     from: word.from + 'robot.'.length,
-    options: ROBOT_JS_API.map((entry) => ({
+    options: api.map((entry) => ({
       label: entry.name,
       detail: entry.signature.slice(entry.name.length),
       info: entry.info,
@@ -71,9 +76,17 @@ function robotCompletions(context: CompletionContext): CompletionResult | null {
   }
 }
 
+const luaLanguage = StreamLanguage.define(lua)
+
 function languageExtension(): Extension {
-  // Python editing arrives with the Python runtime (step 2).
-  return [javascript(), javascriptLanguage.data.of({ autocomplete: robotCompletions })]
+  switch (props.language) {
+    case 'python':
+      return [python(), pythonLanguage.data.of({ autocomplete: robotCompletions(ROBOT_PY_API) })]
+    case 'lua':
+      return [luaLanguage, luaLanguage.data.of({ autocomplete: robotCompletions(ROBOT_LUA_API) })]
+    default:
+      return [javascript(), javascriptLanguage.data.of({ autocomplete: robotCompletions(ROBOT_JS_API) })]
+  }
 }
 
 function theme(dark: boolean): Extension {

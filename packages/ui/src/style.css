@@ -2,6 +2,10 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 @import "tailwindcss";
+/* Workspace packages are reached through node_modules, which Tailwind doesn't scan; the lesson
+   blocks (here, and their heavy players in @roboacademy/sim) use utility classes, so point it at them. */
+@source "./components/lesson-blocks";
+@source "../../sim/src/vue/lesson";
 @import "tw-animate-css";
 @import "@fontsource-variable/inter";
 @import "@fontsource-variable/geist";

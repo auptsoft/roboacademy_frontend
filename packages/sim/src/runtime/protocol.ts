@@ -15,11 +15,14 @@ export type HostToWorker =
 export type CallKind = 'command' | 'sensor' | 'tick'
 
 export type WorkerToHost =
+  /** The program has begun executing (after any runtime start-up, such as loading Python). */
+  | { type: 'started' }
   | { type: 'call'; id: number; kind: CallKind; name: string; args: Record<string, unknown> }
   | { type: 'highlight'; blockId: string }
   | { type: 'print'; text: string }
   | { type: 'done' }
-  | { type: 'error'; message: string }
+  /** `location` is a highlight id (a block id, or "L" + line) when the error knows where it came from. */
+  | { type: 'error'; message: string; location?: string }
 
 /** Names the generated code calls, besides the robot commands. */
 export const RUNTIME_GLOBALS = {

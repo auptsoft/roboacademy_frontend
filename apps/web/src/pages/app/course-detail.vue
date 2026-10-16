@@ -1,19 +1,24 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { RaChip, RaProgress, RaCard, RaButton } from '@roboacademy/ui'
+import { RaChip, RaProgress, RaCard, RaButton, RaInteractiveLesson, parseInteractiveContent, celebrate } from '@roboacademy/ui'
 import {
-  CheckCircle2, PlayCircle, Lock, ChevronRight, ChevronDown, Layers, List,
-  Loader2, AlertTriangle, Compass, ArrowRight, ExternalLink,
+  CheckCircle2, PlayCircle, Lock, ChevronLeft, ChevronRight, ChevronDown, Layers, List,
+  Loader2, AlertTriangle, Compass, ArrowRight, ExternalLink, CloudOff,
   Video, BookOpen, Puzzle, Cpu, FileText,
   ClipboardCheck, PenLine, UploadCloud, Paperclip, Sparkles, PanelLeftClose,
 } from 'lucide-vue-next'
 import { ApiError } from '@/api/client'
 import { getCourse, getCourseResumePoint, recordLessonProgress, getLessonPlaybackUrl, combinedProgressPercent, type CourseDetail, type CourseLessonDetail, type CourseResumePoint } from '@/api/learning'
 import TutorPanel from '@/components/tutor/TutorPanel.vue'
-import InteractiveLesson from '@/components/lesson-blocks/InteractiveLesson.vue'
-import { parseInteractiveContent } from '@/components/lesson-blocks/types'
 import { useAIAvailability } from '@/composables/useAIAvailability'
+import { useLessonAnswers } from '@/composables/useLessonAnswers'
+import { useLessonAssets } from '@/composables/useLessonAssets'
+// Tiny: each player inside loads only when a lesson has that block.
+import { lessonBlockRenderers } from '@roboacademy/sim/lesson'
+import { enqueue, pendingSyncCount } from '@/lib/offline-sync'
+import { kvGet, kvSet } from '@/lib/offline-store'
+import { getCurrentUser } from '@/store/auth'
 import { renderRichText } from '@/lib/rich-text'
 import {
   listModuleAssessments, getAssessment, listMyAttempts, startAttempt, submitAttempt, getAttemptFileUploadUrl,
@@ -74,6 +79,28 @@ function toggleModule(moduleId: string) {
   expandedModuleIds.value = next
 }
 
+// The last good copy of the course and progress is kept on the device, so a lesson already opened
+// can be reopened on a flaky connection. Only a network failure falls back to it - a 404 or 403
+// from the server still means what it says.
+const offlineCopy = ref(false)
+
+async function loadCourseAndProgress(courseId: string): Promise<[CourseDetail, CourseResumePoint]> {
+  const userId = getCurrentUser()?.userId
+  try {
+    const result = await Promise.all([getCourse(courseId), getCourseResumePoint(courseId)])
+    offlineCopy.value = false
+    if (userId) void kvSet(userId, `course:${courseId}`, result)
+    return result
+  } catch (err) {
+    const cached = !(err instanceof ApiError) && userId
+      ? await kvGet<[CourseDetail, CourseResumePoint]>(userId, `course:${courseId}`)
+      : undefined
+    if (!cached) throw err
+    offlineCopy.value = true
+    return cached
+  }
+}
+
 async function load() {
   status.value = 'loading'
   errorMessage.value = ''
@@ -81,10 +108,7 @@ async function load() {
   assessmentsByModule.value = new Map()
   try {
     const courseId = route.params.id as string
-    const [courseResult, resumeResult] = await Promise.all([
-      getCourse(courseId),
-      getCourseResumePoint(courseId),
-    ])
+    const [courseResult, resumeResult] = await loadCourseAndProgress(courseId)
     course.value = courseResult
     resume.value = resumeResult
     expandedModuleIds.value = new Set(courseResult.modules.map(m => m.id))
@@ -186,6 +210,64 @@ const selectedAssessmentContext = computed(() => {
 
 const progressPercent = computed(() => resume.value ? combinedProgressPercent(resume.value) : 0)
 
+// ── Celebrations ─────────────────────────────────────────────────────────────
+// Passes are celebrated as they happen on this page, never for what was already done on arrival.
+
+/** courseCompleted alone is lesson-only; finishing the course also means its required assessments. */
+function fullyComplete(r: CourseResumePoint) {
+  return r.courseCompleted && r.completedAssessments >= r.totalAssessments
+}
+
+watch(resume, (next, prev) => {
+  if (!next || !prev || next.courseId !== prev.courseId) return
+  if (fullyComplete(next) && !fullyComplete(prev)) {
+    celebrate({ size: 'grand', title: 'Course complete!', subtitle: course.value ? `You finished ${course.value.title}.` : undefined })
+  }
+})
+
+async function refreshResume() {
+  if (!course.value) return
+  try {
+    resume.value = await getCourseResumePoint(course.value.id)
+  } catch {
+    // Progress catches up on the next load; a failed refresh isn't worth an error here.
+  }
+}
+
+// Assessment passes the learner has already been celebrated for, so a teacher-graded pass is
+// celebrated once, the first time they open it. Per browser, which is enough for a one-off moment.
+const CELEBRATED_KEY = 'ra.celebratedAttempts'
+
+function celebratedKey() {
+  return `${CELEBRATED_KEY}.${getCurrentUser()?.userId ?? 'anon'}`
+}
+
+function celebratedAttempts(): string[] {
+  try {
+    const ids: unknown = JSON.parse(localStorage.getItem(celebratedKey()) ?? '[]')
+    return Array.isArray(ids) ? ids : []
+  } catch {
+    return []
+  }
+}
+
+function celebrateAssessmentPass(attempt: AttemptSummary) {
+  try {
+    const ids = celebratedAttempts().filter(id => id !== attempt.id)
+    localStorage.setItem(celebratedKey(), JSON.stringify([...ids, attempt.id].slice(-200)))
+  } catch {
+    // Storage unavailable - worst case the same pass is celebrated again on a later visit.
+  }
+  celebrate({
+    size: 'major',
+    title: 'Assessment passed!',
+    subtitle: attempt.score != null ? `You scored ${attempt.score}%.` : selectedAssessmentContext.value?.summary.title,
+  })
+}
+
+/** Old passes aren't news: only celebrate a teacher's grade that landed recently. */
+const LATE_GRADE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000
+
 function selectLesson(lessonId: string) {
   if (lessonState(lessonId) === 'locked') return
   selectedItem.value = { kind: 'lesson', id: lessonId }
@@ -195,19 +277,92 @@ function lessonNumber(lessonId: string): number {
   return flatLessons.value.findIndex(f => f.lesson.id === lessonId) + 1
 }
 
+// ── Previous / next ──────────────────────────────────────────────────────────
+// Steps through lessons and assessments in curriculum order, the same sequence as the sidebar.
+
+const orderedItems = computed<ModuleItem[]>(() =>
+  course.value ? course.value.modules.flatMap(mod => moduleItems.value.get(mod.id) ?? []) : [])
+
+function itemId(item: ModuleItem) {
+  return item.kind === 'lesson' ? item.lesson.id : item.assessment.id
+}
+
+/** The item on screen, which is the active lesson until the learner picks something. */
+const currentItem = computed<SelectedItem | null>(() => selectedItem.value?.kind === 'assessment'
+  ? selectedItem.value
+  : selectedFlat.value ? { kind: 'lesson', id: selectedFlat.value.lesson.id } : null)
+
+const currentItemIndex = computed(() => {
+  const current = currentItem.value
+  if (!current) return -1
+  return orderedItems.value.findIndex(item => item.kind === current.kind && itemId(item) === current.id)
+})
+
+const previousItem = computed(() => currentItemIndex.value > 0 ? orderedItems.value[currentItemIndex.value - 1] : null)
+const nextItem = computed(() => currentItemIndex.value >= 0 ? orderedItems.value[currentItemIndex.value + 1] ?? null : null)
+
+function itemTitle(item: ModuleItem) {
+  return item.kind === 'lesson'
+    ? `${String(lessonNumber(item.lesson.id)).padStart(2, '0')}. ${item.lesson.title}`
+    : item.assessment.title
+}
+
+/** Lessons unlock in order; assessments are open from the start, as in the sidebar. */
+function itemLocked(item: ModuleItem) {
+  return item.kind === 'lesson' && lessonState(item.lesson.id) === 'locked'
+}
+
+function goToItem(item: ModuleItem) {
+  if (itemLocked(item)) return
+  if (item.kind === 'lesson') selectLesson(item.lesson.id)
+  else selectAssessment(item.assessment.id)
+}
+
+// Moving to another item starts it from the top, wherever the move came from.
+const contentPane = ref<HTMLElement | null>(null)
+watch(() => currentItem.value && `${currentItem.value.kind}:${currentItem.value.id}`, (next, prev) => {
+  if (!prev || next === prev || !contentPane.value) return
+  contentPane.value.scrollTop = 0
+  contentPane.value.scrollIntoView({ block: 'start' })
+})
+
 async function markComplete() {
   if (!course.value || !selectedFlat.value) return
+  const courseId = course.value.id
+  const lesson = selectedFlat.value
   completeState.value = 'saving'
   completeError.value = ''
   try {
-    await recordLessonProgress(course.value.id, [selectedFlat.value.lesson.id])
-    resume.value = await getCourseResumePoint(course.value.id)
+    // Answers first: the server won't complete an Interactive lesson without them.
+    if (interactiveContent.value && !(await flushAnswers())) throw new TypeError('offline')
+    await recordLessonProgress(courseId, [lesson.lesson.id])
+    resume.value = await getCourseResumePoint(courseId)
     selectedItem.value = resume.value.nextLessonId ? { kind: 'lesson', id: resume.value.nextLessonId } : null
     completeState.value = 'idle'
   } catch (err) {
-    completeState.value = 'error'
-    completeError.value = err instanceof ApiError ? err.message : 'Something went wrong.'
+    if (err instanceof ApiError) {
+      completeState.value = 'error'
+      completeError.value = err.message
+      return
+    }
+    // No connection: queue the completion behind its answers, and move on here as the server will.
+    await enqueue({ kind: 'progress', courseId, lessonId: lesson.lesson.id })
+    advanceLocally(lesson.lesson)
+    completeState.value = 'idle'
   }
+}
+
+/** The resume point as the server will have it once a queued completion arrives. */
+function advanceLocally(completed: CourseLessonDetail) {
+  if (!resume.value) return
+  const index = flatLessons.value.findIndex(f => f.lesson.id === completed.id)
+  const next = flatLessons.value[index + 1]?.lesson ?? null
+  resume.value = {
+    ...resume.value,
+    nextLessonId: next?.id ?? null,
+    completedLessons: resume.value.completedLessons + (completed.isRequired ? 1 : 0),
+  }
+  selectedItem.value = next ? { kind: 'lesson', id: next.id } : null
 }
 
 // ── Simulation lessons ───────────────────────────────────────────────────────
@@ -234,6 +389,41 @@ const interactiveContent = computed(() =>
   lessonType.value === 'interactive' ? parseInteractiveContent(selectedFlat.value?.lesson.content) : null)
 const interactiveComplete = ref(false)
 
+// The lesson reports its state as soon as it mounts, already complete when saved answers finish it.
+// Only a change after that first report is the learner finishing the checks now.
+let interactiveReported = false
+
+function onInteractiveProgress(state: { complete: boolean }) {
+  const justFinished = interactiveReported && !interactiveComplete.value && state.complete
+  interactiveReported = true
+  interactiveComplete.value = state.complete
+  if (justFinished) {
+    celebrate({
+      size: selectedState.value === 'done' ? 'light' : 'standard',
+      title: 'All checks done!',
+      subtitle: selectedState.value === 'active' ? 'Mark the lesson complete to continue.' : undefined,
+    })
+  }
+}
+
+// Answers are saved as each check resolves, and loaded back so a lesson left part-way reopens
+// where the learner was. The lesson mounts once they've loaded, so restored blocks don't jump.
+const { restored: restoredAnswers, load: loadAnswers, record: recordAnswer, flush: flushAnswers } = useLessonAnswers()
+// Media blocks' files: signed URLs for the open lesson, refreshed before they expire.
+const { urls: lessonAssetUrls, load: loadLessonAssets, clear: clearLessonAssets } = useLessonAssets()
+watch(
+  () => (interactiveContent.value && course.value ? selectedFlat.value?.lesson.id : undefined),
+  (lessonId) => {
+    if (!lessonId || !course.value || !interactiveContent.value) {
+      clearLessonAssets()
+      return
+    }
+    void loadAnswers(course.value.id, lessonId)
+    void loadLessonAssets(course.value.id, lessonId, interactiveContent.value)
+  },
+  { immediate: true },
+)
+
 // ── AI tutor ─────────────────────────────────────────────────────────────────
 // Offered on non-simulation lessons when the school's plan and settings include it (simulation
 // lessons get their own hints later). The panel owns its conversation; this page only opens it and
@@ -250,6 +440,13 @@ const showTutorButton = computed(() =>
 async function onSimulationGraded(result: { score: number; passed: boolean }) {
   simGraded.value = result
   if (!result.passed || !course.value) return
+  // Re-running a lesson that's already done still deserves a nod, just a smaller one.
+  const firstPass = selectedState.value !== 'done'
+  celebrate({
+    size: firstPass ? 'standard' : 'light',
+    title: firstPass ? 'Simulation passed!' : 'Passed again!',
+    subtitle: `You scored ${result.score}%.`,
+  })
   const courseId = course.value.id
   for (const delay of [800, 2000, 4000]) {
     await new Promise((resolve) => setTimeout(resolve, delay))
@@ -263,6 +460,8 @@ async function onSimulationGraded(result: { score: number; passed: boolean }) {
 }
 
 watch(() => selectedFlat.value?.lesson.id, () => (simGraded.value = null))
+// Each mount of the interactive lesson (new lesson, or answers reloaded) starts a fresh baseline.
+watch([() => selectedFlat.value?.lesson.id, restoredAnswers], () => (interactiveReported = false))
 
 const videoState = ref<'idle' | 'loading' | 'playing' | 'error'>('idle')
 const videoUrl = ref<string | null>(null)
@@ -380,6 +579,16 @@ async function loadAssessmentDetail(assessmentId: string) {
     myAttempts.value = attempts
     resetAnswerState()
     assessmentDetailState.value = 'loaded'
+
+    // Quizzes are celebrated on submit; written and file work is graded later by a teacher.
+    const latest = attempts[0]
+    if (
+      detail.type !== 'Quiz' && latest?.status === 'Graded' && latest.passed && latest.gradedAt
+      && Date.now() - new Date(latest.gradedAt).getTime() < LATE_GRADE_WINDOW_MS
+      && !celebratedAttempts().includes(latest.id)
+    ) {
+      celebrateAssessmentPass(latest)
+    }
   } catch (err) {
     assessmentDetailState.value = 'error'
     assessmentDetailError.value = err instanceof ApiError ? err.message : 'Something went wrong.'
@@ -446,7 +655,8 @@ async function submitCurrentAttempt() {
   submitError.value = ''
   try {
     const attemptId = currentAttempt.value.id
-    const assessmentId = selectedAssessmentContext.value.summary.id
+    const summary = selectedAssessmentContext.value.summary
+    const assessmentId = summary.id
     if (assessmentDetail.value.type === 'Quiz') {
       await submitAttempt(attemptId, { answers: quizAnswers.value as number[] })
     } else if (assessmentDetail.value.type === 'Written') {
@@ -461,6 +671,14 @@ async function submitCurrentAttempt() {
     }
     await refreshMyAttempts(assessmentId)
     submitState.value = 'idle'
+
+    const graded = currentAttempt.value
+    if (graded?.id === attemptId && graded.status === 'Graded' && graded.passed) {
+      celebrateAssessmentPass(graded)
+      summary.passed = true
+      // A required assessment may have been the last thing left in the course.
+      void refreshResume()
+    }
   } catch (err) {
     uploadState.value = 'idle'
     submitState.value = 'error'
@@ -616,7 +834,7 @@ watch(() => route.params.id, load, { immediate: true })
     </div>
 
     <!-- Right: lesson body -->
-    <div class="flex-1 overflow-y-auto px-12 pt-8 pb-12 max-md:px-4 max-md:pt-5 max-md:pb-8">
+    <div ref="contentPane" class="flex-1 overflow-y-auto px-12 pt-8 pb-12 max-md:px-4 max-md:pt-5 max-md:pb-8">
       <button
         type="button"
         class="hidden items-center gap-2 mb-4 py-2 px-3.5 rounded-(--ra-md) border border-(--line-2) bg-(--bg-2) text-(--fg-2) text-[13px] font-semibold cursor-pointer hover:text-(--fg-1) max-md:inline-flex"
@@ -625,6 +843,17 @@ watch(() => route.params.id, load, { immediate: true })
       >
         <List :size="14" /> Curriculum
       </button>
+      <p
+        v-if="offlineCopy || pendingSyncCount > 0"
+        class="mt-0 mb-4 flex items-center gap-2 rounded-(--ra-md) border border-(--line-2) bg-(--bg-2) px-3.5 py-2.5 text-[13px] text-(--fg-2)"
+        role="status"
+      >
+        <CloudOff :size="14" class="shrink-0 text-(--fg-3)" />
+        <template v-if="offlineCopy">You're offline, so this is the copy saved on your device.</template>
+        <template v-if="pendingSyncCount > 0">
+          {{ pendingSyncCount === 1 ? '1 change is' : `${pendingSyncCount} changes are` }} saved on this device and will sync when you're back online.
+        </template>
+      </p>
       <div class="flex items-center gap-2 text-[13px] text-(--fg-3) mb-3.5">
         <button class="bg-transparent border-0 p-0 cursor-pointer text-(--fg-3) hover:text-(--fg-1)" @click="router.push('/app/courses')">Courses</button>
         <ChevronRight :size="12" />
@@ -660,13 +889,22 @@ watch(() => route.params.id, load, { immediate: true })
 
         <div v-if="selectedFlat.lesson.context" class="rich-text text-(--fg-2) leading-[1.7]" v-html="renderRichText(selectedFlat.lesson.context)"></div>
 
-        <InteractiveLesson
-          v-if="interactiveContent"
-          :key="selectedFlat.lesson.id"
-          :content="interactiveContent"
-          :class="selectedFlat.lesson.context && 'mt-8'"
-          @progress="interactiveComplete = $event.complete"
-        />
+        <template v-if="interactiveContent">
+          <RaInteractiveLesson
+            v-if="restoredAnswers"
+            :key="selectedFlat.lesson.id"
+            :content="interactiveContent"
+            :initial-results="restoredAnswers"
+            :asset-urls="lessonAssetUrls"
+            :renderers="lessonBlockRenderers"
+            :class="selectedFlat.lesson.context && 'mt-8'"
+            @progress="onInteractiveProgress"
+            @answer="(blockId, result) => recordAnswer(course!.id, selectedFlat!.lesson.id, blockId, result)"
+          />
+          <p v-else class="mt-8 mb-0 inline-flex items-center gap-2 text-[13px] text-(--fg-3)">
+            <Loader2 :size="14" class="animate-spin" /> Loading your answers…
+          </p>
+        </template>
 
         <!--
           Simulation is checked first on purpose. A simulation lesson carries its scene id in
@@ -874,6 +1112,45 @@ watch(() => route.params.id, load, { immediate: true })
       </template>
 
       <p v-else class="m-0 text-[13px] text-(--fg-3)">This course has no lessons yet.</p>
+
+      <nav
+        v-if="currentItemIndex !== -1 && (previousItem || nextItem)"
+        aria-label="Lesson navigation"
+        class="grid grid-cols-2 gap-3 mt-10 pt-6 border-t border-(--line-1)"
+      >
+        <button
+          v-if="previousItem"
+          type="button"
+          class="group flex items-center gap-3 min-w-0 px-4 py-3 rounded-(--ra-lg) border border-(--line-2) bg-(--bg-2) text-left cursor-pointer transition-colors duration-(--dur-1) ease-(--ease-out) hover:border-(--brand-blue)"
+          @click="goToItem(previousItem)"
+        >
+          <ChevronLeft :size="18" class="shrink-0 text-(--fg-3) group-hover:text-(--brand-blue)" />
+          <span class="min-w-0">
+            <span class="block text-[11px] font-semibold uppercase tracking-wide text-(--fg-4)">Previous</span>
+            <span class="block truncate text-[13px] font-semibold text-(--fg-1)">{{ itemTitle(previousItem) }}</span>
+          </span>
+        </button>
+        <span v-else />
+
+        <button
+          v-if="nextItem"
+          type="button"
+          class="group flex items-center justify-end gap-3 min-w-0 px-4 py-3 rounded-(--ra-lg) border border-(--line-2) bg-(--bg-2) text-right transition-colors duration-(--dur-1) ease-(--ease-out)"
+          :class="itemLocked(nextItem) ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:border-(--brand-blue)'"
+          :disabled="itemLocked(nextItem)"
+          :title="itemLocked(nextItem) ? 'Complete this lesson to unlock the next one' : undefined"
+          @click="goToItem(nextItem)"
+        >
+          <span class="min-w-0">
+            <span class="block text-[11px] font-semibold uppercase tracking-wide text-(--fg-4)">
+              {{ itemLocked(nextItem) ? 'Locked' : 'Next' }}
+            </span>
+            <span class="block truncate text-[13px] font-semibold text-(--fg-1)">{{ itemTitle(nextItem) }}</span>
+          </span>
+          <Lock v-if="itemLocked(nextItem)" :size="16" class="shrink-0 text-(--fg-4)" />
+          <ChevronRight v-else :size="18" class="shrink-0 text-(--fg-3) group-hover:text-(--brand-blue)" />
+        </button>
+      </nav>
     </div>
   </div>
 

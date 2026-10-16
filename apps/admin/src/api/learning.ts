@@ -1,3 +1,4 @@
+import type { InteractiveLessonContent } from '@roboacademy/ui'
 import { apiFetch, apiFetchPaged, type PageMeta } from '@/api/client'
 
 export type LessonType = 'Video' | 'Reading' | 'Interactive' | 'Simulation' | 'Pdf'
@@ -30,9 +31,12 @@ export interface LessonItem {
   context: string | null
   /** Simulation lessons: the language learners program in, or Any to let them choose. */
   programmingLanguage: ProgrammingLanguage
+  /** Interactive lessons: block content (see @roboacademy/ui lesson-blocks), or null. Never set
+   * for other types. */
+  content: InteractiveLessonContent | null
 }
 
-export type ProgrammingLanguage = 'Blocks' | 'JavaScript' | 'Python' | 'Any'
+export type ProgrammingLanguage = 'Blocks' | 'JavaScript' | 'Python' | 'Lua' | 'Any'
 
 export interface CourseModuleItem {
   id: string
@@ -200,6 +204,53 @@ export function updateLesson(
 
 export function deleteLesson(courseId: string, moduleId: string, lessonId: string): Promise<{ lessonId: string }> {
   return apiFetch(`/api/learning/courses/${courseId}/modules/${moduleId}/lessons/${lessonId}`, { method: 'DELETE' })
+}
+
+// Interactive lessons, draft courses only. null clears the content. Schema errors come back as
+// ApiError.fieldErrors keyed by JSON path, e.g. "Content.blocks[2].options".
+export function setLessonInteractiveContent(
+  courseId: string, moduleId: string, lessonId: string, content: InteractiveLessonContent | null,
+): Promise<{ id: string; hasContent: boolean }> {
+  return apiFetch(`/api/learning/courses/${courseId}/modules/${moduleId}/lessons/${lessonId}/interactive-content`, {
+    method: 'PUT',
+    body: JSON.stringify({ content }),
+  })
+}
+
+// Files for an Interactive lesson's media blocks: upload straight to R2 with the returned URL,
+// then put objectKey in the block. sizeBytes is checked against the type's limit up front.
+export function getLessonAssetUploadUrl(
+  courseId: string, moduleId: string, lessonId: string,
+  request: { contentType: string; fileName: string; sizeBytes: number },
+): Promise<LessonContentUploadUrl> {
+  return apiFetch(`/api/learning/courses/${courseId}/modules/${moduleId}/lessons/${lessonId}/asset-upload-url`, {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
+}
+
+// Signed URLs for a lesson's files (staff may read any file of the lesson, saved or not).
+export function getLessonAssetUrls(
+  courseId: string, lessonId: string, keys: string[],
+): Promise<{ urls: Record<string, string>; expiresAt: string }> {
+  return apiFetch(`/api/learning/courses/${courseId}/lessons/${lessonId}/asset-urls`, {
+    method: 'POST',
+    body: JSON.stringify({ keys }),
+  })
+}
+
+/** How learners did on one check block of an Interactive lesson. */
+export interface LessonBlockInsight {
+  blockId: string
+  learners: number
+  firstTryCorrect: number
+  revealedAnswer: number
+  /** Choice blocks: wrong options by how many learners picked them, most first. */
+  wrongPicks: { optionId: string; optionText: string; count: number }[]
+}
+
+export function getLessonBlockInsights(courseId: string, moduleId: string, lessonId: string): Promise<LessonBlockInsight[]> {
+  return apiFetch(`/api/learning/courses/${courseId}/modules/${moduleId}/lessons/${lessonId}/block-insights`)
 }
 
 // --- Lesson content (e.g. video) upload/playback via presigned R2 URLs ---

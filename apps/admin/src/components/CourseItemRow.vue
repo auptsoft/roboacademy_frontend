@@ -12,7 +12,7 @@ defineProps<{
   reordering: boolean
   gatedByTitle: string | null
 }>()
-defineEmits<{ edit: []; open: []; 'toggle-required': []; delete: [] }>()
+defineEmits<{ edit: []; 'edit-content': []; open: []; 'toggle-required': []; delete: [] }>()
 </script>
 
 <template>
@@ -70,6 +70,10 @@ defineEmits<{ edit: []; open: []; 'toggle-required': []; delete: [] }>()
       <span class="sr-only">Open actions</span>
     </DropdownMenuTrigger>
     <DropdownMenuContent>
+      <!-- Opens even on a published course: the content page shows it read-only there. -->
+      <DropdownMenuItem v-if="item.kind === 'lesson' && item.lesson?.type === 'Interactive'" @select="$emit('edit-content')">
+        {{ isDraft ? 'Edit content' : 'View content' }}
+      </DropdownMenuItem>
       <DropdownMenuItem
         variant="destructive"
         :disabled="deleting || (item.kind === 'lesson' && !isDraft)"

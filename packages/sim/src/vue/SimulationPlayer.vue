@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Code2, Maximize2, Minimize2, Play, RotateCcw, Square, Send } from 'lucide-vue-next'
+import { Maximize2, Minimize2, Play, RotateCcw, Square, Send } from 'lucide-vue-next'
 import { RaButton, RaChip } from '@roboacademy/ui'
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import { ArenaRenderer } from '../engine/renderer'
@@ -7,19 +7,29 @@ import { initPhysics } from '../engine/physics'
 import { Simulation } from '../engine/simulation'
 import type { ObjectiveSet, ObjectiveStatus } from '../grading/types'
 import { getCapability } from '../robots'
-import { createProgramWorker } from '../runtime/create-worker'
+import { createLuaWorker, createProgramWorker } from '../runtime/create-worker'
+import { createPythonWorker, prewarmPythonWorker, releasePythonWorker } from '../runtime/python-worker-pool'
 import { RunController, type RunResult } from '../runtime/run-controller'
 import type { SceneDefinition } from '../scene/types'
 import { isSourceProgram, lineFromHighlight, type ProgramLanguage } from '../languages/types'
-import { readableCode } from '../blocks/robot-blocks'
 import BlocksEditor from './BlocksEditor.vue'
 import CodeEditor from './CodeEditor.vue'
 
-/** A new JavaScript program starts from this, so the robot API is one keystroke away. */
-const JS_STARTER = `// Type "robot." to see everything the robot can do.
+/** New text programs start from these, so the robot API is one keystroke away. */
+const STARTERS: Record<'javascript' | 'python' | 'lua', string> = {
+  javascript: `// Type "robot." to see everything the robot can do.
 robot.move(20);
 robot.turnLeft(90);
-`
+`,
+  python: `# Type "robot." to see everything the robot can do.
+robot.move(20)
+robot.turn_left(90)
+`,
+  lua: `-- Type "robot." to see everything the robot can do.
+robot.move(20)
+robot.turn_left(90)
+`,
+}
 
 export type RunMode = 'practice' | 'graded'
 
@@ -62,12 +72,14 @@ const stage = ref<HTMLElement | null>(null)
 const editor = ref<InstanceType<typeof BlocksEditor> | null>(null)
 const codeEditor = ref<InstanceType<typeof CodeEditor> | null>(null)
 const language = computed<ProgramLanguage>(() => props.language ?? 'blocks')
-const initialSource = computed(() => (isSourceProgram(props.program) ? props.program.source : JS_STARTER))
+const initialSource = computed(() => {
+  if (isSourceProgram(props.program)) return props.program.source
+  return language.value === 'blocks' ? '' : STARTERS[language.value]
+})
+/** True while a run waits for its runtime to start (Python loads Pyodide first). */
+const starting = ref(false)
 /** A text program that didn't compile: shown like a run result, without a run. */
 const compileError = ref<{ message: string; line: number | null } | null>(null)
-/** Block programs only: the read-only JavaScript the blocks become. */
-const showGenerated = ref(false)
-const generatedPreview = ref('')
 
 const status = ref<'loading' | 'idle' | 'running' | 'ended' | 'error'>('loading')
 const loadError = ref<string | null>(null)
@@ -170,6 +182,7 @@ function loop(now: number): void {
   if (document.hidden) return
 
   if (controller && sim && status.value === 'running') {
+    starting.value = !controller.isStarted
     controller.advance(delta)
     renderer?.update(sim.frame())
     if (now - lastUiUpdateAt > 100) {
@@ -199,6 +212,8 @@ async function prepareProgram(): Promise<{ code: string; readable: string; progr
     output.value = ['Write some code first.']
     return null
   }
+  // Python and Lua are parsed and instrumented inside their workers, which also report syntax errors.
+  if (language.value === 'python' || language.value === 'lua') return { code: source, readable: source, program: { source } }
   // Babel is several megabytes, so it's loaded the first time a JavaScript program runs.
   const { compileJavaScript } = await import('../languages/javascript/compile')
   const compiled = compileJavaScript(source)
@@ -232,7 +247,9 @@ async function start(mode: RunMode): Promise<void> {
   highlightId.value = null
   narrowTab.value = 'robot'
 
-  controller = new RunController(sim!, createProgramWorker, {
+  const createWorker =
+    language.value === 'python' ? createPythonWorker : language.value === 'lua' ? createLuaWorker : createProgramWorker
+  controller = new RunController(sim!, createWorker, {
     onHighlight: (id) => (highlightId.value = id),
     onPrint: (text) => {
       output.value = [...output.value.slice(-49), text]
@@ -243,6 +260,9 @@ async function start(mode: RunMode): Promise<void> {
       highlightId.value = runResult.summary.error?.blockId ?? null
       elapsedMs.value = runResult.summary.durationMs
       objectiveStatuses.value = runResult.grading?.objectives ?? []
+      starting.value = false
+      // Warm the next Python worker now the run is over, so the next Run starts straight away.
+      if (language.value === 'python') prewarmPythonWorker()
       emit('runEnd', { runId: currentRunId, mode, program, generatedCode: readable, result: runResult })
     },
   })
@@ -270,11 +290,6 @@ function showErrorBlock(): void {
   narrowTab.value = 'program'
   if (line) codeEditor.value?.focusLine(line)
   else if (id) editor.value?.select(id)
-}
-
-function toggleGenerated(): void {
-  showGenerated.value = !showGenerated.value
-  if (showGenerated.value) generatedPreview.value = readableCode(editor.value?.generate() ?? '')
 }
 
 const runningLine = computed(() => lineFromHighlight(highlightId.value))
@@ -305,6 +320,7 @@ onMounted(async () => {
     freshSimulation()
     status.value = 'idle'
     frameHandle = requestAnimationFrame(loop)
+    if (language.value === 'python') prewarmPythonWorker()
   } catch {
     status.value = 'error'
     loadError.value = 'The simulation could not be started on this device.'
@@ -318,6 +334,7 @@ onBeforeUnmount(() => {
   controller?.dispose()
   sim?.dispose()
   renderer?.dispose()
+  if (language.value === 'python') releasePythonWorker()
   controller = null
   sim = null
   renderer = null
@@ -377,14 +394,11 @@ defineExpose({ reset, stop })
         <template #icon><Send :size="14" /></template>
         Submit
       </RaButton>
-      <RaChip v-if="status === 'running'" :tone="runMode === 'graded' ? 'info' : 'neutral'">
+      <RaChip v-if="status === 'running' && starting" tone="neutral">Starting Python…</RaChip>
+      <RaChip v-else-if="status === 'running'" :tone="runMode === 'graded' ? 'info' : 'neutral'">
         {{ runMode === 'graded' ? 'Graded run' : 'Practice run' }} · {{ seconds }} s
       </RaChip>
       <div class="sim-player__spacer" />
-      <RaButton v-if="language === 'blocks'" variant="ghost" :aria-pressed="showGenerated" @click="toggleGenerated">
-        <template #icon><Code2 :size="14" /></template>
-        <span class="sim-player__label">{{ showGenerated ? 'Show blocks' : 'View as JavaScript' }}</span>
-      </RaButton>
       <div class="sim-player__tabs" role="tablist">
         <button role="tab" :aria-selected="narrowTab === 'program'" @click="narrowTab = 'program'">Program</button>
         <button role="tab" :aria-selected="narrowTab === 'robot'" @click="narrowTab = 'robot'">Robot</button>
@@ -406,29 +420,19 @@ defineExpose({ reset, stop })
       :style="{ '--editor-share': editorShare }"
     >
       <section class="sim-player__program" aria-label="Program">
-        <template v-if="language === 'blocks'">
-          <BlocksEditor
-            v-if="capability"
-            v-show="!showGenerated"
-            ref="editor"
-            :program="program ?? null"
-            :capability="capability"
-            :hidden-sensors="scene.hiddenSensors"
-            :readonly="status === 'running'"
-            :highlight-id="highlightId"
-            :dark="dark"
-            @change="(program, code) => emit('programChange', program, code)"
-          />
-          <CodeEditor
-            v-if="showGenerated"
-            :source="generatedPreview"
-            language="javascript"
-            readonly
-            :dark="dark"
-          />
-        </template>
+        <BlocksEditor
+          v-if="language === 'blocks' && capability"
+          ref="editor"
+          :program="program ?? null"
+          :capability="capability"
+          :hidden-sensors="scene.hiddenSensors"
+          :readonly="status === 'running'"
+          :highlight-id="highlightId"
+          :dark="dark"
+          @change="(program, code) => emit('programChange', program, code)"
+        />
         <CodeEditor
-          v-else
+          v-else-if="language !== 'blocks'"
           ref="codeEditor"
           :source="initialSource"
           :language="language"

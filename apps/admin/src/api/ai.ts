@@ -1,3 +1,4 @@
+import type { LessonBlock } from '@roboacademy/ui'
 import { apiErrorFrom, apiFetch, apiHeaders, apiUrl } from '@/api/client'
 
 // --- Availability (any signed-in user) ---
@@ -162,6 +163,17 @@ export function draftCourseCopy(courseId: string, tone: CopyTone, tier?: AITier)
 
 export function draftLessonSummary(lessonId: string, tier?: AITier): Promise<{ summary: string; keyPoints: string[]; tier: AITier }> {
   return apiFetch(`${school}/authoring/lesson-summary`, { method: 'POST', body: JSON.stringify({ lessonId, tier }) })
+}
+
+// Drafts an Interactive lesson's blocks from its notes, or from pasted text. Nothing is saved:
+// the blocks go into the content editor for the author to review and save.
+export function draftLessonBlocks(
+  lessonId: string, sourceText?: string, tier?: AITier,
+): Promise<{ blocks: LessonBlock[]; dropped: number; tier: AITier }> {
+  return apiFetch(`${school}/authoring/lesson-blocks`, {
+    method: 'POST',
+    body: JSON.stringify({ lessonId, sourceText: sourceText?.trim() || null, tier }),
+  })
 }
 
 // --- Tutor index (ai:settings:manage) ---

@@ -186,15 +186,6 @@ export function registerRobotBlocks(): void {
   )
 }
 
-/**
- * Generated code without the runtime's bookkeeping (the per-statement highlight calls and the
- * per-loop tick), for showing learners what their blocks become. The backend strips the same
- * lines before sending a program to the hint model (RoboticsLab SimulationAssistContext).
- */
-export function readableCode(code: string): string {
-  return code.replace(/^[ \t]*(highlightBlock\('[^']*'\)|__tick\(\));[ \t]*\r?\n/gm, '').trim()
-}
-
 /** Generates runnable code from a workspace. */
 export function generateCode(workspace: Blockly.Workspace): string {
   registerRobotBlocks()

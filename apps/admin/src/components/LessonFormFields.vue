@@ -33,7 +33,8 @@ export interface LessonFormState {
 const LANGUAGE_OPTIONS: { value: ProgrammingLanguage; label: string; disabled?: boolean }[] = [
   { value: 'Blocks', label: 'Blocks' },
   { value: 'JavaScript', label: 'JavaScript' },
-  { value: 'Python', label: 'Python (coming soon)', disabled: true },
+  { value: 'Python', label: 'Python' },
+  { value: 'Lua', label: 'Lua' },
   { value: 'Any', label: "Learner's choice" },
 ]
 

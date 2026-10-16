@@ -4,6 +4,7 @@ import AppSidebar from '@/components/layout/AppSidebar.vue'
 import AppBottomNav from '@/components/layout/AppBottomNav.vue'
 import AssistantLauncher from '@/components/assistant/AssistantLauncher.vue'
 import TermsGate from '@/components/legal/TermsGate.vue'
+import { RaCelebration } from '@roboacademy/ui'
 import { onMounted, provide } from 'vue'
 
 import { getTenantId } from '@/api/client'
@@ -56,5 +57,6 @@ onMounted(async () => {
     <AppBottomNav />
     <AssistantLauncher />
     <TermsGate />
+    <RaCelebration />
   </div>
 </template>

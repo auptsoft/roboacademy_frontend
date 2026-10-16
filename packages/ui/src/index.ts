@@ -1,5 +1,6 @@
 export { default as RaAvatar } from './components/ui/RaAvatar.vue'
 export { default as RaButton } from './components/ui/RaButton.vue'
+export { default as RaCelebration } from './components/ui/RaCelebration.vue'
 export { default as RaCard } from './components/ui/RaCard.vue'
 export { default as RaChip } from './components/ui/RaChip.vue'
 export { default as RaCourseCard } from './components/ui/RaCourseCard.vue'
@@ -14,3 +15,13 @@ export { formatDate } from './lib/date'
 export { useThemeSwitcher, applyTheme, initTheme, THEME_STORAGE_KEY } from './composables/theme-switcher'
 export type { ThemeMode } from './composables/theme-switcher'
 export { applyFavicon, applyDocumentTitle } from './composables/document-identity'
+export {
+  celebrate, dismissCelebration, useCelebration, playChime,
+  celebrationSoundEnabled, setCelebrationSoundEnabled, CELEBRATION_SOUND_KEY,
+} from './composables/celebration'
+export type { Celebration, CelebrationSize } from './composables/celebration'
+
+export { default as RaInteractiveLesson } from './components/lesson-blocks/InteractiveLesson.vue'
+export * from './components/lesson-blocks/types'
+export { useAssetUrl } from './components/lesson-blocks/assets'
+export { renderRichText } from './lib/rich-text'

@@ -1,16 +1,18 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { RaButton } from '@roboacademy/ui'
+import RaButton from '../ui/RaButton.vue'
 import { Check, X } from 'lucide-vue-next'
-import { renderRichText } from '@/lib/rich-text'
+import { renderRichText } from '../../lib/rich-text'
 import type { BlockResult, ChoiceBlock } from './types'
 
 const props = defineProps<{ block: ChoiceBlock; result: BlockResult | null }>()
 const emit = defineEmits<{ resolved: [result: BlockResult] }>()
 
 const selectedId = ref<string | null>(null)
-// Wrong picks stay marked (with their feedback) so the learner never re-tries the same one.
-const triedIds = ref<string[]>([])
+// Wrong picks stay marked (with their feedback) so the learner never re-tries the same one. A
+// restored result brings its picks back, so a revisit shows what was tried.
+const restoredAnswer = props.result?.answer
+const triedIds = ref<string[]>(restoredAnswer && 'picks' in restoredAnswer ? [...restoredAnswer.picks] : [])
 
 const resolved = computed(() => props.result !== null)
 const correctId = computed(() => props.block.options.find(o => o.correct)!.id)
@@ -22,13 +24,13 @@ function check() {
   if (!selectedId.value) return
   triedIds.value.push(selectedId.value)
   if (selectedId.value === correctId.value) {
-    emit('resolved', { correct: true, attempts: triedIds.value.length })
+    emit('resolved', { correct: true, attempts: triedIds.value.length, answer: { picks: [...triedIds.value] } })
   }
   selectedId.value = null
 }
 
 function showAnswer() {
-  emit('resolved', { correct: false, attempts: triedIds.value.length })
+  emit('resolved', { correct: false, attempts: triedIds.value.length, answer: { picks: [...triedIds.value] } })
 }
 
 function optionState(id: string): 'correct' | 'wrong' | 'selected' | 'idle' {
