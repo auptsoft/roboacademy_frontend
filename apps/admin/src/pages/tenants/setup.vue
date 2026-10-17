@@ -2,15 +2,16 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
-import { RaCard, RaChip, RaStatusDot, formatDate } from '@roboacademy/ui'
+import { RaCard, RaChip, RaStatusDot } from '@roboacademy/ui'
 import { ShieldCheck, X, PauseCircle, PlayCircle, ImageUp, ChevronDown, LogIn, Info } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import Input from '@/components/ui/input.vue'
 import Label from '@/components/ui/label.vue'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
-import UserPreviewPopover from '@/components/UserPreviewPopover.vue'
+import ActivityTimeline from '@/components/ActivityTimeline.vue'
 import TenantPlanCard from '@/components/TenantPlanCard.vue'
 import TenantAISettingsCard from '@/components/TenantAISettingsCard.vue'
+import TenantPaymentsCard from '@/components/TenantPaymentsCard.vue'
 import AuditLogFilters, { type AuditLogFilterState } from '@/components/AuditLogFilters.vue'
 import { ApiError, postImpersonationToken } from '@/api/client'
 import { enterTenant, getActiveTenantId, hasPermission, isImpersonating } from '@/store/auth'
@@ -44,6 +45,8 @@ const isPlatformTenant = computed(() => tenantId.value === PLATFORM_TENANT_ID)
 const canManage = hasPermission('tenancy:manage')
 const canManageOwn = canManage || hasPermission('tenancy:manage-own')
 const canImpersonate = hasPermission('tenancy:impersonate')
+// The platform admin's fee and payout view of a school (Payments Phase P2).
+const canManagePayments = hasPermission('payments:manage')
 
 // AI settings are always the caller's own active tenant (the API resolves it from the request),
 // so the section only appears when this page is showing that tenant - not another school a
@@ -536,6 +539,8 @@ watch(tenantId, async () => {
 
           <TenantAISettingsCard v-if="showAI" :key="tenant.tenantId" v-model:open="aiOpen" />
 
+          <TenantPaymentsCard v-if="canManagePayments && !isPlatformTenant" :key="`payments-${tenant.tenantId}`" :tenant-id="tenant.tenantId" />
+
           <!-- Hosts -->
           <RaCard id="hosts" :padding="0" class="scroll-mt-6 overflow-hidden">
             <Collapsible v-model:open="hostsOpen">
@@ -794,25 +799,7 @@ watch(tenantId, async () => {
               <CollapsibleContent>
                 <AuditLogFilters v-model="auditFilters" :entity-type-options="TENANCY_ENTITY_TYPES" />
                 <div>
-                  <p v-if="auditLoading && auditItems.length === 0" class="p-6 text-center text-[13px] text-(--fg-3)">Loading activity…</p>
-                  <p v-else-if="auditItems.length === 0" class="p-6 text-center text-[13px] text-(--fg-3)">No activity recorded yet.</p>
-                  <ul v-else class="m-0 flex list-none flex-col p-0">
-                    <li
-                      v-for="item in auditItems"
-                      :key="item.id"
-                      class="flex items-start justify-between gap-3 border-b border-(--line-1) py-3 px-6 last:border-b-0 flex-col"
-                    >
-                      <div>
-                        <div class="flex flex-wrap items-center gap-1.5 text-sm text-(--fg-1)">
-                          <span class="font-semibold">{{ item.action }}</span> — {{ item.entityType }}
-                          <UserPreviewPopover v-if="item.userId" :user-id="item.userId" />
-                          <span v-else class="text-xs text-(--fg-4)">System</span>
-                        </div>
-                        <div v-if="item.changes" class="mt-1 font-mono text-xs text-(--fg-4) ">{{ item.changes }}</div>
-                      </div>
-                      <span class="shrink-0 text-xs text-(--fg-3)">{{ formatDate(item.occurredAt) }}</span>
-                    </li>
-                  </ul>
+                  <ActivityTimeline :items="auditItems" :loading="auditLoading" />
                   <div v-if="hasMoreAudit" class="flex justify-center border-t border-(--line-1) py-3">
                     <Button variant="ghost" size="sm" :disabled="auditLoading" @click="loadAudit(auditPage + 1)">
                       {{ auditLoading ? 'Loading…' : 'Load more' }}

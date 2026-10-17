@@ -17,7 +17,7 @@ import AIDraftLessonDialog from '@/components/lesson-content/AIDraftLessonDialog
 import { useAIAvailability } from '@/composables/useAIAvailability'
 import { ApiError } from '@/api/client'
 import {
-  getCourse, getLessonAssetUrls, getLessonBlockInsights, setLessonInteractiveContent,
+  getCourse, getLessonAssetUploadUrl, getLessonAssetUrls, getLessonBlockInsights, setLessonInteractiveContent,
   type CourseDetail, type LessonBlockInsight, type LessonItem,
 } from '@/api/learning'
 import { BLOCK_TYPES, duplicateBlock, newBlock, type BlockType } from '@/lib/lesson-blocks'
@@ -45,12 +45,23 @@ const serverErrors = ref<Record<string, string[]>>({})
 const tab = ref<'edit' | 'preview'>('edit')
 // How learners did on each check so far; empty until loaded, and simply hidden if that fails.
 const insights = ref<Record<string, LessonBlockInsight>>({})
+// Learner view plays the lesson as learners get it; "all blocks" shows everything at once.
+const previewAll = ref(false)
+const isCards = computed(() => draft.value.display === 'cards')
+// Cards display: the card number each block starts, for the "Card N" labels in the block list.
+const cardStarts = computed(() => {
+  const starts = new Map<number, number>()
+  let card = 0
+  draft.value.blocks.forEach((_, i) => {
+    if (i === 0 || !draft.value.blocks[i - 1]!.keepWithNext) starts.set(i, ++card)
+  })
+  return starts
+})
+
 // Preview URLs for media: signed URLs for saved files, local object URLs for new uploads.
 const assetUrls = ref<Record<string, string>>({})
 provide(lessonAssetContextKey, {
-  get courseId() { return courseId.value },
-  get moduleId() { return moduleId.value },
-  get lessonId() { return lessonId.value },
+  requestUpload: request => getLessonAssetUploadUrl(courseId.value, moduleId.value, lessonId.value, request),
   urls: assetUrls,
 })
 // "Draft with AI", when the school's plan and settings include authoring help.
@@ -93,7 +104,8 @@ async function load() {
       status.value = 'not-found'
       return
     }
-    draft.value = lesson.value.content ?? { version: 1, blocks: [] }
+    // New lessons start as cards; saved lessons without a display setting keep scrolling.
+    draft.value = lesson.value.content ?? { version: 1, blocks: [], display: 'cards' }
     savedJson.value = JSON.stringify(draft.value)
     status.value = 'ready'
     void loadInsights()
@@ -246,21 +258,42 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', warnOnUnload))
 
       <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-6 max-lg:grid-cols-1">
         <fieldset :disabled="!isDraft" class="m-0 flex min-w-0 flex-col gap-3 border-0 p-0" :class="tab === 'preview' && 'max-lg:hidden'">
+          <div class="flex flex-wrap items-center justify-between gap-2 rounded-(--ra-md) border border-(--line-1) bg-(--bg-2) px-3 py-2">
+            <span class="text-[13px] text-(--fg-2)">Learners see</span>
+            <div class="flex gap-1 rounded-(--ra-md) bg-(--bg-3) p-1" role="radiogroup" aria-label="How learners see the blocks">
+              <button
+                v-for="option in ([['cards', 'One card at a time'], ['scroll', 'A scrolling page']] as const)"
+                :key="option[0]"
+                type="button"
+                role="radio"
+                :aria-checked="(draft.display ?? 'scroll') === option[0]"
+                class="cursor-pointer rounded-(--ra-sm) border-0 px-2.5 py-1 text-xs font-semibold"
+                :class="(draft.display ?? 'scroll') === option[0] ? 'bg-(--bg-1) text-(--fg-1)' : 'bg-transparent text-(--fg-3)'"
+                @click="draft.display = option[0]"
+              >
+                {{ option[1] }}
+              </button>
+            </div>
+          </div>
           <p v-if="!draft.blocks.length" class="m-0 rounded-(--ra-lg) border border-dashed border-(--line-2) px-4 py-8 text-center text-[13px] text-(--fg-3)">
             No blocks yet. Add text, questions and activities to build the lesson.
           </p>
-          <BlockEditorCard
-            v-for="(block, index) in draft.blocks"
-            :key="block.id"
-            v-model:block="draft.blocks[index]!"
-            :index="index"
-            :total="draft.blocks.length"
-            :errors="blockErrors(index)"
-            :insight="insights[block.id] ?? null"
-            @move="moveBlock(index, $event)"
-            @duplicate="draft.blocks.splice(index + 1, 0, duplicateBlock(block))"
-            @remove="removeBlock(index)"
-          />
+          <template v-for="(block, index) in draft.blocks" :key="block.id">
+            <span v-if="isCards && cardStarts.has(index)" class="mt-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-(--fg-4)">
+              Card {{ cardStarts.get(index) }}
+            </span>
+            <BlockEditorCard
+              v-model:block="draft.blocks[index]!"
+              :index="index"
+              :total="draft.blocks.length"
+              :errors="blockErrors(index)"
+              :insight="insights[block.id] ?? null"
+              :cards="isCards"
+              @move="moveBlock(index, $event)"
+              @duplicate="draft.blocks.splice(index + 1, 0, duplicateBlock(block))"
+              @remove="removeBlock(index)"
+            />
+          </template>
           <p v-for="msg in errors.blocks ?? []" :key="msg" class="m-0 text-xs text-(--danger)">{{ msg }}</p>
 
           <DropdownMenu v-if="isDraft">
@@ -285,16 +318,40 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', warnOnUnload))
         <div class="min-w-0" :class="tab === 'edit' && 'max-lg:hidden'">
           <div class="sticky top-4 flex flex-col gap-3">
             <div class="flex items-center justify-between gap-2">
-              <span class="text-xs font-semibold uppercase tracking-[0.06em] text-(--fg-3)">Learner preview</span>
-              <Button variant="ghost" size="sm" @click="previewKey++"><RotateCcw :size="14" /> Reset answers</Button>
+              <div class="flex gap-1 rounded-(--ra-md) bg-(--bg-3) p-1" role="radiogroup" aria-label="Preview">
+                <button
+                  v-for="option in ([[false, 'Learner view'], [true, 'All blocks']] as const)"
+                  :key="String(option[0])"
+                  type="button"
+                  role="radio"
+                  :aria-checked="previewAll === option[0]"
+                  class="cursor-pointer rounded-(--ra-sm) border-0 px-2.5 py-1 text-xs font-semibold"
+                  :class="previewAll === option[0] ? 'bg-(--bg-1) text-(--fg-1)' : 'bg-transparent text-(--fg-3)'"
+                  @click="previewAll = option[0]"
+                >
+                  {{ option[1] }}
+                </button>
+              </div>
+              <Button variant="ghost" size="sm" @click="previewKey++"><RotateCcw :size="14" /> Start over</Button>
             </div>
             <RaCard :padding="24" class="max-h-[calc(100vh-140px)] overflow-y-auto">
               <div v-if="lesson.context" class="rich-text mb-8 leading-[1.7] text-(--fg-2)" v-html="renderRichText(lesson.context)" />
-              <RaInteractiveLesson v-if="preview" :key="previewKey" :content="preview" :asset-urls="assetUrls" :renderers="lessonBlockRenderers" reveal-all />
+              <RaInteractiveLesson
+                v-if="preview"
+                :key="`${previewKey}-${previewAll}`"
+                :content="preview"
+                :asset-urls="assetUrls"
+                :renderers="lessonBlockRenderers"
+                :reveal-all="previewAll"
+              />
               <p v-else class="m-0 text-[13px] text-(--fg-3)">Add a block to see the preview. Blocks show here once they have content.</p>
             </RaCard>
             <p class="m-0 text-xs text-(--fg-4)">
-              The preview shows every step at once. Learners see one step at a time and must answer each required check to continue.
+              {{ previewAll
+                ? 'Every block at once, for checking content. Switch to Learner view to play the lesson.'
+                : isCards
+                  ? 'As learners see it: one card at a time, answering each required question to continue.'
+                  : 'As learners see it: the page grows as each required question is answered.' }}
             </p>
           </div>
         </div>

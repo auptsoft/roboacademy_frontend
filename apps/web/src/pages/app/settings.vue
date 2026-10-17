@@ -10,6 +10,7 @@ import {
   type NotificationPreference,
 } from '@/api/notifications'
 import { getCalendarFeedUrl, rotateCalendarFeedUrl } from '@/api/scheduling'
+import PurchasesSection from '@/components/payments/PurchasesSection.vue'
 
 const preferences = ref<NotificationPreference[]>([])
 const status = ref<'loading' | 'idle' | 'error'>('loading')
@@ -248,5 +249,7 @@ const channels = [
         </RaButton>
       </div>
     </section>
+
+    <PurchasesSection />
   </div>
 </template>

@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Cpu, HelpCircle } from 'lucide-vue-next'
 import { navFor } from './nav-items'
 import { useAIAvailability } from '@/composables/useAIAvailability'
 import { useAssistant } from '@/composables/useAssistant'
 import type { TenantBranding } from '@/api/tenancy'
+import { unreadTotal, watchUnread } from '@/lib/community-realtime'
 
 const route = useRoute()
 const router = useRouter()
@@ -16,11 +17,24 @@ const props = defineProps<{
 
 const items = computed(() => navFor(props.branding))
 
+// The Messages badge, kept live only while the school has chat.
+let stopUnread: (() => void) | null = null
+watch(() => items.value.some((item) => item.id === 'messages'), (hasMessages) => {
+  if (hasMessages && !stopUnread) stopUnread = watchUnread()
+  if (!hasMessages && stopUnread) {
+    stopUnread()
+    stopUnread = null
+  }
+}, { immediate: true })
+onBeforeUnmount(() => stopUnread?.())
+
 const { assistantAvailable } = useAIAvailability()
 const { openAssistant } = useAssistant()
 
 function isActive(path: string) {
   if (path === '/app') return route.path === '/app'
+  // Messages lives under /app/community; don't light up Community for it too.
+  if (path === '/app/community' && route.path.startsWith('/app/community/chat')) return false
   return route.path.startsWith(path)
 }
 </script>
@@ -48,6 +62,11 @@ function isActive(path: string) {
       >
         <component :is="item.icon" :size="20" :stroke-width="1.75" />
         {{ item.label }}
+        <span
+          v-if="item.id === 'messages' && unreadTotal > 0"
+          class="ml-auto min-w-5 rounded-full bg-(--brand-blue) px-1.5 py-0.5 text-center text-[11px] font-semibold text-white"
+          :aria-label="`${unreadTotal} unread`"
+        >{{ unreadTotal > 99 ? '99+' : unreadTotal }}</span>
       </button>
     </nav>
 

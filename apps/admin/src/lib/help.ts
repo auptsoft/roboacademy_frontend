@@ -1,7 +1,7 @@
 import type { Component } from 'vue'
 import {
   BadgeCheck, Bot, BookOpen, Building2, CalendarDays, ClipboardList, Compass, Layers, Library, Rocket,
-  Settings2, Sparkles, Users,
+  Settings2, Sparkles, Users, CreditCard,
 } from 'lucide-vue-next'
 
 /** Guide topics in the backend's order (HelpTopics.For): staff topics, then platform ones. */
@@ -20,6 +20,7 @@ export const HELP_TOPICS: Record<string, { label: string; icon: Component }> = {
   plans: { label: 'Plans (platform)', icon: Layers },
   'ai-models': { label: 'AI models (platform)', icon: Sparkles },
   'content-library': { label: 'Content library (platform)', icon: Library },
+  payments: { label: 'Payments', icon: CreditCard },
 }
 
 export function helpTopicLabel(topic: string): string {
@@ -51,6 +52,13 @@ const PAGE_NAMES: Record<string, string> = {
   '/tenants': 'Tenants',
   '/plans': 'Plans',
   '/ai-models': 'AI Models',
+  '/payments/providers': 'Payment Providers',
+  '/payments/orders': 'Orders',
+  '/payments/payouts': 'Fees & Payouts',
+  '/payments/payout': 'Payouts',
+  '/payments/sales': 'Sales',
+  '/payments/refunds': 'Refunds',
+  '/payments/reconciliation': 'Reconciliation',
   '/audit': 'Audit Log',
   '/profile': 'Profile',
 }

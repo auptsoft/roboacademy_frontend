@@ -1,5 +1,6 @@
 import type { PyodideAPI } from 'pyodide'
 import { PYTHON_RUNNER } from '../languages/python/runner'
+import { PEN_COLORS } from '../robots/pen'
 import type { CallKind, HostToWorker, StartMessage, WorkerToHost } from './protocol'
 
 type PyCallable = ((...args: unknown[]) => Promise<unknown>) & { destroy?: () => void }
@@ -51,20 +52,21 @@ export class PythonSession {
 
   private async prepare(loadPyodide: () => Promise<PyodideAPI>): Promise<PyCallable> {
     const pyodide = await loadPyodide()
-    pyodide.globals.set('_sim_host', (kind: CallKind, name: string, argsJson: string) =>
-      this.call(kind, name, JSON.parse(argsJson) as Record<string, unknown>))
+    pyodide.globals.set('_sim_host', (kind: CallKind, name: string, argsJson: string, robot?: string, wait?: boolean) =>
+      this.call(kind, name, JSON.parse(argsJson) as Record<string, unknown>, { ...(robot ? { robot } : {}), ...(wait === false ? { wait } : {}) }))
     pyodide.globals.set('_sim_tick', () => this.call('tick', '', {}))
+    pyodide.globals.set('_sim_pen_colors', JSON.stringify(PEN_COLORS.map((color) => color.name)))
     pyodide.globals.set('_sim_line', (line: number) => this.post({ type: 'highlight', blockId: `L${line}` }))
     pyodide.globals.set('_sim_print', (text: string) => this.post({ type: 'print', text: String(text).slice(0, 500) }))
     pyodide.runPython(PYTHON_RUNNER)
     return pyodide.globals.get('run_program') as PyCallable
   }
 
-  private call(kind: CallKind, name: string, args: Record<string, unknown>): Promise<unknown> {
+  private call(kind: CallKind, name: string, args: Record<string, unknown>, target: { robot?: string; wait?: boolean } = {}): Promise<unknown> {
     const id = this.nextCallId++
     return new Promise((resolve) => {
       this.pending.set(id, resolve)
-      this.post({ type: 'call', id, kind, name, args })
+      this.post({ type: 'call', id, kind, name, args, ...target })
     })
   }
 
@@ -85,7 +87,7 @@ export class PythonSession {
 
     this.post({ type: 'started' })
     try {
-      await runProgram(message.code)
+      await runProgram(message.code, JSON.stringify(message.robots.map(({ id, api }) => ({ id, api }))))
       if (!this.failed) this.post({ type: 'done' })
     } catch (error) {
       const { text, line } = describePythonError(error)

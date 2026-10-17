@@ -17,25 +17,25 @@ const props = defineProps<{
 
 <template>
   <div
-    class="rounded-(--ra-xl) px-6 pt-6 pb-7 flex flex-col min-w-0 shadow-(--surface-shadow)"
+    class="rounded-(--ra-xl) px-6 pt-6 pb-7 max-sm:p-3.5 flex flex-col min-w-0 shadow-(--surface-shadow)"
     :class="props.variant === 'navy' ? 'bg-(--brand-navy) text-(--brand-navy-fg)' : 'bg-(--surface) text-(--heading)'"
   >
-    <span class="text-[15px] font-medium">{{ props.label }}</span>
+    <span class="text-[15px] font-medium max-sm:text-[13px] max-sm:leading-tight">{{ props.label }}</span>
 
-    <div v-if="props.variant === 'split'" class="grid grid-cols-2 gap-4 mt-7">
+    <div v-if="props.variant === 'split'" class="grid grid-cols-2 gap-4 mt-7 max-sm:mt-2.5">
       <div class="min-w-0">
-        <div class="text-[52px] font-bold leading-none tabular-nums text-(--success) max-sm:text-[40px]">{{ props.value }}</div>
-        <div v-if="props.caption" class="mt-4 text-sm text-(--fg-2)">{{ props.caption }}</div>
+        <div class="text-[52px] font-bold leading-none tabular-nums text-(--success) max-sm:text-[28px]">{{ props.value }}</div>
+        <div v-if="props.caption" class="mt-4 text-sm max-sm:mt-1.5 max-sm:text-xs text-(--fg-2)">{{ props.caption }}</div>
       </div>
       <div class="min-w-0">
-        <div class="text-[52px] font-bold leading-none tabular-nums max-sm:text-[40px]">{{ props.secondaryValue }}</div>
-        <div v-if="props.secondaryCaption" class="mt-4 text-sm text-(--fg-3)">{{ props.secondaryCaption }}</div>
+        <div class="text-[52px] font-bold leading-none tabular-nums max-sm:text-[28px]">{{ props.secondaryValue }}</div>
+        <div v-if="props.secondaryCaption" class="mt-4 text-sm max-sm:mt-1.5 max-sm:text-xs text-(--fg-3)">{{ props.secondaryCaption }}</div>
       </div>
     </div>
 
     <template v-else>
-      <div class="mt-7 text-[52px] font-bold leading-none tabular-nums max-sm:text-[40px]">{{ props.value }}</div>
-      <div v-if="props.delta || props.caption" class="mt-4 flex items-center gap-1.5 text-sm">
+      <div class="mt-7 max-sm:mt-2.5 text-[52px] font-bold leading-none tabular-nums max-sm:text-[28px]">{{ props.value }}</div>
+      <div v-if="props.delta || props.caption" class="mt-4 flex flex-wrap items-center gap-x-1.5 text-sm max-sm:mt-1.5 max-sm:text-xs max-sm:leading-tight">
         <template v-if="props.delta">
           <component
             :is="props.deltaDirection === 'down' ? ArrowDown : ArrowUp"

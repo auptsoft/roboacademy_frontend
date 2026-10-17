@@ -6,6 +6,6 @@ export function lessonToolbox(): Blockly.utils.toolbox.ToolboxDefinition {
   const toolbox = robotToolbox() as Blockly.utils.toolbox.ToolboxInfo
   return {
     ...toolbox,
-    contents: toolbox.contents.filter(item => !('name' in item) || !['Motion', 'Sensors'].includes(String(item.name))),
+    contents: toolbox.contents.filter(item => !('name' in item) || !['Motion', 'Sensors', 'Pen'].includes(String(item.name))),
   } as Blockly.utils.toolbox.ToolboxDefinition
 }

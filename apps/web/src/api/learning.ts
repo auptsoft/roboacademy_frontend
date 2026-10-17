@@ -10,6 +10,16 @@ export interface CourseCatalogItem {
   state: 'Draft' | 'Published' | 'Retired'
   thumbnailUrl: string | null
   lessonCount: number
+  /** Null for a free course. */
+  price: CoursePrice | null
+  /** The current user has bought this course. */
+  purchased: boolean
+}
+
+/** Amounts are in the currency's minor unit (kobo). */
+export interface CoursePrice {
+  amountMinor: number
+  currency: string
 }
 
 export interface LearningPathItem {
@@ -74,6 +84,8 @@ export interface PathStartResult {
   userId: string
   coursesEnrolled: number
   coursesAlreadyEnrolled: number
+  /** Paid courses on the path the learner hasn't bought yet; they're left out until bought. */
+  requiresPurchase: string[]
 }
 
 export function startLearningPath(pathId: string): Promise<PathStartResult> {
@@ -218,6 +230,10 @@ export interface CourseDetail {
   thumbnailUrl: string | null
   introVideoReference: string | null
   modules: CourseModuleDetail[]
+  /** Null for a free course. */
+  price: CoursePrice | null
+  /** The current user has bought this course (enrolling again never charges). */
+  purchased: boolean
 }
 
 export function getCourse(courseId: string): Promise<CourseDetail> {

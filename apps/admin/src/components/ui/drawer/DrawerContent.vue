@@ -22,7 +22,7 @@ defineProps<{ class?: HTMLAttributes['class'] }>()
     >
       <slot />
       <DialogClose
-        class="absolute top-4 right-4 inline-flex size-8 items-center justify-center bg-secondary text-secondary-foreground hover:bg-secondary/80"
+        class="absolute top-4 right-4 inline-flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
       >
         <X class="size-4" />
         <span class="sr-only">Close</span>

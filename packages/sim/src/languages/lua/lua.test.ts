@@ -165,3 +165,65 @@ describe('describeLuaError', () => {
       .toEqual({ text: 'Line 4: oops', line: 4 })
   })
 })
+
+const armScene = (): SceneDefinition => ({
+  ...emptyScene(),
+  robot: { type: 'arm', start: { x: 0, z: 0, headingDeg: 0 } },
+  props: [{ id: 'block', shape: 'box', x: 0.2, z: 0, size: { x: 0.04, y: 0.04, z: 0.04 }, color: '#f00', mass: 0.1 }],
+})
+
+describe('robot arm in Lua', () => {
+  it('picks a block up and puts it down somewhere else', async () => {
+    const { result, prints } = await runLua(
+      `robot.reach(20, 8)
+robot.reach(20, 1, 40)
+robot.close_gripper()
+print(robot.holding())
+robot.reach(20, 10, 40)
+robot.set_base(90)
+robot.reach(20, 1.5, 40)
+robot.open_gripper()
+print(robot.holding(), robot.base_angle(), robot.gripper_height())
+`,
+      armScene(),
+    )
+    expect(result.outcome).toBe('completed')
+    expect(prints).toEqual(['true', 'false\t90\t1.5'])
+  })
+})
+
+const twoRobotScene = (): SceneDefinition => ({
+  ...emptyScene(),
+  robot: { type: 'diff-drive', start: { x: -0.5, z: -0.3, headingDeg: 0 } },
+  robots: [
+    { id: 'rover', type: 'rover', start: { x: -0.5, z: 0.3, headingDeg: 0 } },
+    { id: 'arm', type: 'arm', start: { x: 0.8, z: 0, headingDeg: 180 } },
+  ],
+})
+
+describe('several robots in Lua', () => {
+  it('moves robots together and waits for them', async () => {
+    const { result, prints } = await runLua(
+      `robots.rover.start.move(30)
+robots.arm.start.set_base(45)
+robot.move(30)
+wait_for_all()
+print(robot.x(), robots.rover.x(), robots.arm.base_angle())
+`,
+      twoRobotScene(),
+    )
+    expect(result.outcome).toBe('completed')
+    expect(prints).toEqual(['-20.0\t-20.0\t45'])
+    expect(result.summary.durationMs).toBeLessThan(3200)
+  })
+})
+
+describe('the pen in Lua', () => {
+  it('draws, and rejects unknown colours', async () => {
+    const ok = await runLua('robot.pen_down()\nrobot.pen_color("green")\nrobot.move(10)\nrobot.pen_up()\n')
+    expect(ok.result.outcome).toBe('completed')
+    const bad = await runLua('robot.pen_color("pink")\n')
+    expect(bad.result.outcome).toBe('runtime_error')
+    expect(bad.result.summary.error?.message).toContain("There is no pen colour 'pink'")
+  })
+})

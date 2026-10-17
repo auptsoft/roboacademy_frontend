@@ -127,6 +127,7 @@ async function submitGrade() {
         <div class="flex flex-wrap gap-1.5">
           <RaChip tone="neutral">{{ attempt.assessmentType }}</RaChip>
           <RaChip v-if="readyDrafts.has(attempt.id)" tone="info">AI draft ready</RaChip>
+          <RaChip v-if="attempt.submittedAutomatically" tone="neutral">Time ran out</RaChip>
         </div>
         <div class="font-mono text-[13px] text-(--fg-2)">{{ attempt.userId }}</div>
         <Button size="sm" variant="outline" @click="openGrade(attempt)">Grade</Button>

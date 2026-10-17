@@ -1,4 +1,4 @@
-import { apiFetch, apiFetchPaged, type PageMeta } from '@/api/client'
+import { apiErrorFrom, apiFetch, apiFetchPaged, apiUrl, type PageMeta } from '@/api/client'
 import { getEnv } from '@/lib/runtime-env'
 import { appendAuditLogFilterParams, type AuditLogFilters } from '@/api/identity'
 import type { SubscriptionState } from '@/api/plans'
@@ -122,11 +122,18 @@ export function verifyHost(tenantId: string, host: string): Promise<HostsMutatio
 }
 
 // The public branding read is resolved by X-Tenant-Id/Host, not a path param, so we override
-// the header for this one call to read a specific tenant's branding rather than our own.
-export function getTenantBranding(tenantId: string): Promise<TenantBranding> {
-  return apiFetch<TenantBranding>('/api/tenancy/branding', {
+// the header for this one call to read a specific tenant's branding rather than our own. It is
+// sent anonymously: the endpoint needs no token, and a platform admin's token (issued for the
+// platform tenant) addressed to a school would be refused by the backend's token/tenant guard.
+export async function getTenantBranding(tenantId: string): Promise<TenantBranding> {
+  const response = await fetch(apiUrl('/api/tenancy/branding'), {
     headers: { 'X-Tenant-Id': tenantId },
   })
+  const envelope = await response.json().catch(() => null)
+  if (!response.ok || envelope?.isSuccessful === false) {
+    throw apiErrorFrom(response.status, envelope, 'Failed to load branding.')
+  }
+  return envelope.data as TenantBranding
 }
 
 export function updateTenantBranding(

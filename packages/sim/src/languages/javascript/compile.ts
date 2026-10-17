@@ -1,7 +1,7 @@
 import { transform } from '@babel/standalone'
 import type { PluginObj, types as BabelTypes, NodePath } from '@babel/core'
 import { RUNTIME_GLOBALS } from '../../runtime/protocol'
-import { JS_PRELUDE } from './api'
+import { jsPrelude, type PreludeRobot } from './api'
 
 export type CompileResult =
   | { ok: true; code: string }
@@ -52,10 +52,10 @@ function cleanMessage(raw: string): string {
 }
 
 /**
- * Turns a learner's modern JavaScript into ES5 the interpreter can run, with the robot API in
- * front. Runs on the main thread: it only parses and rewrites the code, never executes it.
+ * Turns a learner's modern JavaScript into ES5 the interpreter can run, with the API for the
+ * scene's robots in front. Runs on the main thread: it only parses and rewrites the code, never executes it.
  */
-export function compileJavaScript(source: string): CompileResult {
+export function compileJavaScript(source: string, robots?: PreludeRobot[]): CompileResult {
   try {
     const result = transform(source, {
       sourceType: 'script',
@@ -69,7 +69,7 @@ export function compileJavaScript(source: string): CompileResult {
     })
     // The learner's program runs in its own function scope, so its declarations can't replace
     // the runtime's globals.
-    return { ok: true, code: `${JS_PRELUDE}\n(function () {\n${result?.code ?? ''}\n})();\n` }
+    return { ok: true, code: `${jsPrelude(robots)}\n(function () {\n${result?.code ?? ''}\n})();\n` }
   } catch (error) {
     const err = error as { message?: string; loc?: { line?: number } }
     const line = err.loc?.line ?? null

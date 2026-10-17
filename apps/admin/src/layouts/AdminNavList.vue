@@ -27,7 +27,9 @@ function isActive(path: AdminNavLeaf['path']) {
 const seesGatedAreas = hasPermission('tenancy:plans:manage')
 
 function isOutsidePlan(item: AdminNavLeaf): boolean {
-  return !!item.feature && !hasTenantFeature(item.feature)
+  if (!item.feature) return false
+  const keys = Array.isArray(item.feature) ? item.feature : [item.feature]
+  return !keys.some(hasTenantFeature)
 }
 
 function isVisible(item: AdminNavLeaf): boolean {

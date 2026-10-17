@@ -4,10 +4,10 @@ import { toast } from 'vue-sonner'
 import { RaCard, RaChip } from '@roboacademy/ui'
 import { MoreVertical, Plus, Sparkles, Upload } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
-import Input from '@/components/ui/input.vue'
-import Label from '@/components/ui/label.vue'
 import Pagination from '@/components/Pagination.vue'
-import QuestionOptionsEditor from '@/components/QuestionOptionsEditor.vue'
+import BankItemFields from '@/components/questions/BankItemFields.vue'
+import { bankItemRequest, emptyBankItemForm, type BankItemForm } from '@/components/questions/bank-item-form'
+import { QUIZ_KIND_LABELS } from '@/components/questions/question-kinds'
 import {
   Dialog,
   DialogContent,
@@ -38,6 +38,7 @@ import {
   copyQuestionBankItemsToTenants,
   type QuestionBankItemSummary,
 } from '@/api/assessment'
+import { provideAssessmentAssets } from '@/components/questions/assessment-assets'
 
 const canCopyCrossTenant = useCanCopyCrossTenant()
 
@@ -67,16 +68,11 @@ onMounted(() => {
   load()
 })
 
-interface ItemForm {
-  text: string
-  options: string[]
-  correctOptionIndex: number
-  tags: string
-}
+type ItemForm = BankItemForm
+const emptyForm = emptyBankItemForm
 
-function emptyForm(): ItemForm {
-  return { text: '', options: ['', ''], correctOptionIndex: 0, tags: '' }
-}
+// Diagrams in label-the-diagram questions upload to (and preview from) the assessment store.
+const { loadUrls: loadQuestionImages } = provideAssessmentAssets()
 
 // --- Create ---
 const createOpen = ref(false)
@@ -94,12 +90,7 @@ async function submitCreate() {
   createErrors.value = {}
   createSubmitting.value = true
   try {
-    await createQuestionBankItem({
-      text: createForm.text,
-      options: createForm.options,
-      correctOptionIndex: createForm.correctOptionIndex,
-      tags: createForm.tags ? createForm.tags.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
-    })
+    await createQuestionBankItem(bankItemRequest(createForm))
     toast.success('Question added to the bank.')
     createOpen.value = false
     await load()
@@ -130,9 +121,12 @@ async function openEdit(item: QuestionBankItemSummary) {
   editLoading.value = true
   try {
     const detail = await getQuestionBankItem(item.id)
+    editForm.kind = detail.kind ?? 'choice'
     editForm.text = detail.text
     editForm.options = detail.options
     editForm.correctOptionIndex = detail.correctOptionIndex
+    editForm.definition = detail.definition
+    void loadQuestionImages([detail.definition as { asset?: string } | null])
     editForm.tags = detail.tags.join(', ')
   } catch (error) {
     toast.error(error instanceof ApiError ? error.message : 'Failed to load question detail.')
@@ -151,12 +145,7 @@ async function submitEdit() {
   editErrors.value = {}
   editSubmitting.value = true
   try {
-    await updateQuestionBankItem(editingItem.value.id, {
-      text: editForm.text,
-      options: editForm.options,
-      correctOptionIndex: editForm.correctOptionIndex,
-      tags: editForm.tags ? editForm.tags.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
-    })
+    await updateQuestionBankItem(editingItem.value.id, bankItemRequest(editForm))
     toast.success('Question updated.')
     closeEdit()
     await load()
@@ -244,8 +233,11 @@ const importDialogOpen = ref(false)
         :key="item.id"
         :class="[rowClass, i < bankItems.length - 1 && 'border-b border-(--line-1)']"
       >
-        <div class="text-sm font-semibold text-(--fg-1)">{{ item.text }}</div>
-        <div class="text-sm text-(--fg-2)">{{ item.optionCount }}</div>
+        <div class="flex flex-col">
+          <span class="text-sm font-semibold text-(--fg-1)">{{ item.text }}</span>
+          <span v-if="item.kind && item.kind !== 'choice'" class="text-xs text-(--fg-3)">{{ QUIZ_KIND_LABELS[item.kind] }}</span>
+        </div>
+        <div class="text-sm text-(--fg-2)">{{ item.kind && item.kind !== 'choice' ? '—' : item.optionCount }}</div>
         <div class="flex flex-wrap gap-1">
           <RaChip v-for="tag in item.tags" :key="tag" tone="neutral">{{ tag }}</RaChip>
           <span v-if="item.tags.length === 0" class="text-xs text-(--fg-4)">—</span>
@@ -253,7 +245,7 @@ const importDialogOpen = ref(false)
         <div class="flex justify-end max-md:w-full max-md:justify-start">
           <DropdownMenu>
             <DropdownMenuTrigger
-              class="inline-flex size-9 items-center justify-center rounded-none border border-transparent bg-transparent text-(--fg-3) outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
+              class="inline-flex size-9 items-center justify-center rounded-lg border border-transparent bg-transparent text-(--fg-3) outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
             >
               <MoreVertical :size="16" />
               <span class="sr-only">Open actions</span>
@@ -283,36 +275,13 @@ const importDialogOpen = ref(false)
 
     <!-- Create dialog -->
     <Dialog v-model:open="createOpen">
-      <DialogContent>
+      <DialogContent class="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add Question</DialogTitle>
           <DialogDescription>Adds a reusable question to the bank.</DialogDescription>
         </DialogHeader>
         <form class="flex flex-col gap-4" @submit.prevent="submitCreate">
-          <div class="flex flex-col gap-1.5">
-            <Label for="qb-text">Question Text</Label>
-            <textarea
-              id="qb-text"
-              v-model="createForm.text"
-              rows="2"
-              required
-              class="w-full resize-none rounded-(--ra-md) border border-(--line-2) bg-(--bg-3) px-2.5 py-1.75 font-sans text-sm text-(--fg-2) outline-none placeholder:text-(--fg-4)"
-            />
-            <p v-for="msg in createErrors.Text" :key="msg" class="m-0 text-xs text-(--danger)">{{ msg }}</p>
-          </div>
-          <div class="flex flex-col gap-1.5">
-            <Label>Options</Label>
-            <QuestionOptionsEditor
-              :options="createForm.options"
-              :correct-option-index="createForm.correctOptionIndex"
-              @update:options="(v) => (createForm.options = v)"
-              @update:correct-option-index="(v) => (createForm.correctOptionIndex = v)"
-            />
-          </div>
-          <div class="flex flex-col gap-1.5">
-            <Label for="qb-tags">Tags (comma-separated, optional)</Label>
-            <Input id="qb-tags" v-model="createForm.tags" placeholder="algebra, chapter-1" />
-          </div>
+          <BankItemFields v-model="createForm" :errors="createErrors" id-prefix="qb" />
           <DialogFooter>
             <Button variant="outline" type="button" @click="createOpen = false">Cancel</Button>
             <Button type="submit" :disabled="createSubmitting">
@@ -325,7 +294,7 @@ const importDialogOpen = ref(false)
 
     <!-- Edit dialog -->
     <Dialog :open="editingItem !== null" @update:open="(open) => { if (!open) closeEdit() }">
-      <DialogContent v-if="editingItem">
+      <DialogContent v-if="editingItem" class="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Question</DialogTitle>
           <DialogDescription>
@@ -334,30 +303,7 @@ const importDialogOpen = ref(false)
         </DialogHeader>
         <p v-if="editLoading" class="m-0 py-4 text-center text-[13px] text-(--fg-3)">Loading question…</p>
         <form v-else class="flex flex-col gap-4" @submit.prevent="submitEdit">
-          <div class="flex flex-col gap-1.5">
-            <Label for="qb-edit-text">Question Text</Label>
-            <textarea
-              id="qb-edit-text"
-              v-model="editForm.text"
-              rows="2"
-              required
-              class="w-full resize-none rounded-(--ra-md) border border-(--line-2) bg-(--bg-3) px-2.5 py-1.75 font-sans text-sm text-(--fg-2) outline-none placeholder:text-(--fg-4)"
-            />
-            <p v-for="msg in editErrors.Text" :key="msg" class="m-0 text-xs text-(--danger)">{{ msg }}</p>
-          </div>
-          <div class="flex flex-col gap-1.5">
-            <Label>Options</Label>
-            <QuestionOptionsEditor
-              :options="editForm.options"
-              :correct-option-index="editForm.correctOptionIndex"
-              @update:options="(v) => (editForm.options = v)"
-              @update:correct-option-index="(v) => (editForm.correctOptionIndex = v)"
-            />
-          </div>
-          <div class="flex flex-col gap-1.5">
-            <Label for="qb-edit-tags">Tags (comma-separated, optional)</Label>
-            <Input id="qb-edit-tags" v-model="editForm.tags" />
-          </div>
+          <BankItemFields v-model="editForm" :errors="editErrors" id-prefix="qb-edit" />
           <DialogFooter>
             <Button variant="outline" type="button" @click="closeEdit">Cancel</Button>
             <Button type="submit" :disabled="editSubmitting">

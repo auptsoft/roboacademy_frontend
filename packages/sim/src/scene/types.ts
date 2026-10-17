@@ -6,6 +6,8 @@
  * counter-clockwise seen from above - so `turn(90)` is a left turn.
  */
 
+import { DEFAULT_ROBOT_ID } from '../grading/types'
+
 export interface Vec2 {
   x: number
   z: number
@@ -63,12 +65,22 @@ export interface PropDef {
 export interface RobotPlacement {
   type: string
   start: Vec2 & { headingDeg: number }
+  /** Body colour, so robots of the same type can be told apart. Defaults to the type's own. */
+  color?: string
+}
+
+/** A robot besides the scene's main one. Programs reach it as `robots.<id>`. */
+export interface SceneRobot extends RobotPlacement {
+  id: string
 }
 
 export interface SceneDefinition {
   version: 1
   arena: { width: number; depth: number; floorColor: string }
+  /** The main robot: `robot` in programs, and `robots.robot`. */
   robot: RobotPlacement
+  /** More robots, each programmed through its id. */
+  robots?: SceneRobot[]
   walls: WallDef[]
   zones: ZoneDef[]
   lines: LineDef[]
@@ -80,6 +92,11 @@ export interface SceneDefinition {
 }
 
 export const DEFAULT_TIME_LIMIT_SEC = 120
+
+/** Every robot in a scene, the main one first, with the id `robot`. */
+export function sceneRobots(scene: SceneDefinition): SceneRobot[] {
+  return [{ id: DEFAULT_ROBOT_ID, ...scene.robot }, ...(scene.robots ?? [])]
+}
 
 export function emptyScene(robotType = 'diff-drive'): SceneDefinition {
   return {

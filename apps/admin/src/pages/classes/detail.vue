@@ -35,9 +35,12 @@ import {
   type ClassProgressCell,
 } from '@/api/identity'
 import { visibilityLabel } from '@/api/learning'
+import { hasTenantFeature } from '@/branding'
+import ClassAchievements from '@/components/gamification/ClassAchievements.vue'
+import ClassCommunitySettings from '@/components/community/ClassCommunitySettings.vue'
 import { searchCourses, searchPaths, searchUsers, dueDateToIso, isoToDueDate } from '@/lib/pickers'
 
-type Tab = 'roster' | 'courses' | 'paths' | 'progress'
+type Tab = 'roster' | 'courses' | 'paths' | 'progress' | 'achievements' | 'community'
 
 const route = useRoute()
 const router = useRouter()
@@ -50,7 +53,7 @@ const notFound = ref(false)
 const canManage = hasPermission('identity:classes:manage')
 
 const tab = ref<Tab>(
-  (['roster', 'courses', 'paths', 'progress'] as const).find((t) => t === route.query.tab) ?? 'roster',
+  (['roster', 'courses', 'paths', 'progress', 'achievements'] as const).find((t) => t === route.query.tab) ?? 'roster',
 )
 
 watch(tab, (value) => router.replace({ query: { ...route.query, tab: value } }))
@@ -291,12 +294,21 @@ function cellLabel(cell: ClassProgressCell): string {
   return `${cell.percent}%`
 }
 
-const TABS: { id: Tab; label: string }[] = [
+// Computed: plan features can arrive after this page is set up.
+const TABS = computed<{ id: Tab; label: string }[]>(() => [
   { id: 'roster', label: 'Roster' },
   { id: 'courses', label: 'Courses' },
   { id: 'paths', label: 'Learning Paths' },
   { id: 'progress', label: 'Progress' },
-]
+  // Staff who can give awards see their students' achievements, on plans with gamification.
+  ...(hasTenantFeature('gamification') && hasPermission('gamification:badges:award')
+    ? [{ id: 'achievements' as const, label: 'Achievements' }]
+    : []),
+  // The class's community safety level, for its staff and school admins.
+  ...((hasTenantFeature('community_board') || hasTenantFeature('community_qa')) && hasPermission('community:moderate')
+    ? [{ id: 'community' as const, label: 'Community' }]
+    : []),
+])
 
 function tabCount(id: Tab): number | null {
   if (!detail.value) return null
@@ -495,6 +507,10 @@ function tabCount(id: Tab): number | null {
           </div>
         </div>
       </RaCard>
+
+      <ClassAchievements v-else-if="tab === 'achievements'" :class-id="classId" />
+
+      <ClassCommunitySettings v-else-if="tab === 'community'" :class-id="classId" />
 
       <!-- Progress -->
       <RaCard v-else :padding="0" class="overflow-hidden">

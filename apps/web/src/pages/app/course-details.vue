@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { RaButton, RaChip } from '@roboacademy/ui'
+import { RaButton, RaChip, formatPrice } from '@roboacademy/ui'
 import { ArrowLeft, ArrowRight, Loader2, AlertTriangle, Compass, Play, Video, BookOpen, Puzzle, Cpu, FileText } from 'lucide-vue-next'
 import { ApiError } from '@/api/client'
 import { renderRichText } from '@/lib/rich-text'
 import { getCourse, getCourseIntroVideoUrl, enrolInCourse, getMyEnrolments, withdrawEnrolment, isSchoolAssigned, type CourseDetail } from '@/api/learning'
+import { startCheckout } from '@/api/payments'
 
 const route = useRoute()
 const router = useRouter()
@@ -23,6 +24,12 @@ const enrolmentId = ref<string | null>(null)
 const canWithdraw = ref(true)
 const assigned = ref(false)
 const dueAt = ref<string | null>(null)
+
+// Paid courses: checkout sends the learner to the payment provider's page; they come back to
+// /app/payments/callback, which enrols them once the payment is confirmed.
+const buyState = ref<'idle' | 'starting' | 'error'>('idle')
+const buyError = ref('')
+const mustBuy = computed(() => !!course.value?.price && !course.value.purchased)
 
 const unenrollState = ref<'idle' | 'unenrolling' | 'error'>('idle')
 const unenrollError = ref('')
@@ -44,6 +51,8 @@ async function load() {
   dueAt.value = null
   unenrollState.value = 'idle'
   unenrollError.value = ''
+  buyState.value = 'idle'
+  buyError.value = ''
   try {
     const courseId = route.params.id as string
     course.value = await getCourse(courseId)
@@ -103,12 +112,39 @@ async function enroll() {
     if (err instanceof ApiError && err.status === 409) {
       enrollState.value = 'enrolled'
       await checkEnrolment(course.value.id)
+    } else if (err instanceof ApiError && err.code === 'payment_required') {
+      // Priced since the page loaded: show the price and the Buy button instead.
+      enrollState.value = 'idle'
+      const details = err.details as { amountMinor: number; currency: string }
+      course.value.price = { amountMinor: details.amountMinor, currency: details.currency }
+      course.value.purchased = false
     } else if (err instanceof ApiError && err.status === 403) {
       enrollState.value = 'error'
       enrollError.value = 'This course is only available through your school. Ask your teacher to enrol you.'
     } else {
       enrollState.value = 'error'
       enrollError.value = err instanceof ApiError ? err.message : 'Something went wrong.'
+    }
+  }
+}
+
+async function buy() {
+  if (!course.value) return
+  buyState.value = 'starting'
+  buyError.value = ''
+  try {
+    const { authorizationUrl } = await startCheckout(course.value.id)
+    window.location.assign(authorizationUrl)
+  } catch (err) {
+    buyState.value = 'idle'
+    if (err instanceof ApiError && err.code === 'already_purchased') {
+      course.value.purchased = true
+      await enroll()
+    } else if (err instanceof ApiError && err.code === 'already_has_access') {
+      await checkEnrolment(course.value.id)
+    } else {
+      buyState.value = 'error'
+      buyError.value = err instanceof ApiError ? err.message : 'Something went wrong.'
     }
   }
 }
@@ -217,6 +253,18 @@ watch(() => route.params.id, load, { immediate: true })
                 @click="unenroll"
               >{{ unenrollState === 'unenrolling' ? 'Unenrolling…' : 'Unenrol' }}</button>
             </template>
+            <template v-else-if="mustBuy && course.price">
+              <p class="m-0 mb-3 text-2xl font-bold text-(--fg-1)">{{ formatPrice(course.price.amountMinor, course.price.currency) }}</p>
+              <RaButton class="w-full justify-center" :disabled="buyState === 'starting'" @click="buy">
+                {{ buyState === 'starting' ? 'Opening payment…' : `Buy for ${formatPrice(course.price.amountMinor, course.price.currency)}` }}
+                <template #icon-right>
+                  <Loader2 v-if="buyState === 'starting'" :size="14" class="animate-spin" />
+                  <ArrowRight v-else :size="14" />
+                </template>
+              </RaButton>
+              <p class="mt-2 mb-0 text-center text-xs text-(--fg-3)">One-time payment. Pay by card, bank transfer or USSD.</p>
+              <p v-if="buyState === 'error'" class="mt-2 mb-0 text-xs text-(--danger)">{{ buyError }}</p>
+            </template>
             <RaButton v-else class="w-full justify-center" :disabled="enrollState === 'enrolling'" @click="enroll">
               {{ enrollState === 'enrolling' ? 'Enrolling…' : 'Enrol Now' }}
               <template #icon-right>
@@ -224,6 +272,7 @@ watch(() => route.params.id, load, { immediate: true })
                 <ArrowRight v-else :size="14" />
               </template>
             </RaButton>
+            <p v-if="enrollState !== 'enrolled' && course.purchased" class="mt-2 mb-0 text-center text-xs text-(--fg-3)">You've bought this course.</p>
             <p v-if="enrollState === 'error'" class="mt-2 mb-0 text-xs text-(--danger)">{{ enrollError }}</p>
             <p v-if="unenrollState === 'error'" class="mt-2 mb-0 text-xs text-(--danger)">{{ unenrollError }}</p>
           </div>

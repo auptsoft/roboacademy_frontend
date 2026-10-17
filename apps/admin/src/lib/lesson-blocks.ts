@@ -1,4 +1,4 @@
-import { AppWindow, Box, CircleHelp, Code, Eye, FileDown, Film, Image, Images, ListOrdered, MapPin, Music, SquareTerminal, Type } from 'lucide-vue-next'
+import { AppWindow, Blocks, Box, Calculator, CircleHelp, Code, Eye, FileDown, Film, Image, Images, ListOrdered, MapPin, Music, Shuffle, SquareTerminal, TextCursorInput, Type } from 'lucide-vue-next'
 import type { LessonBlock } from '@roboacademy/ui'
 
 export type BlockType = LessonBlock['type']
@@ -10,6 +10,10 @@ export const BLOCK_TYPES: { type: BlockType; label: string; description: string;
   { type: 'choice', label: 'Multiple choice', description: 'A question with one correct answer.', icon: CircleHelp, group: 'Questions' },
   { type: 'order', label: 'Order steps', description: 'Learners put steps in the right order.', icon: ListOrdered, group: 'Questions' },
   { type: 'label-diagram', label: 'Label the diagram', description: 'Learners name the marked parts of an image.', icon: MapPin, group: 'Questions' },
+  { type: 'cloze', label: 'Fill in the blanks', description: 'Text or code with gaps: word bank or typed.', icon: TextCursorInput, group: 'Questions' },
+  { type: 'match', label: 'Match the pairs', description: 'Learners pair up items from two columns.', icon: Shuffle, group: 'Questions' },
+  { type: 'number', label: 'Number answer', description: 'A calculation, right within a margin.', icon: Calculator, group: 'Questions' },
+  { type: 'parsons', label: 'Code builder', description: 'Learners assemble a program from its lines.', icon: Blocks, group: 'Questions' },
   { type: 'program', label: 'Coding task', description: 'Learners write code that prints the right output.', icon: SquareTerminal, group: 'Questions' },
   { type: 'image', label: 'Image', description: 'A diagram or photo, with a description.', icon: Image, group: 'Media' },
   { type: 'gallery', label: 'Photo gallery', description: 'Step-by-step photos learners swipe through.', icon: Images, group: 'Media' },
@@ -62,6 +66,14 @@ export function newBlock(type: BlockType): LessonBlock {
       return { id, type, asset: '', alt: '' }
     case 'program':
       return { id, type, prompt: '', language: 'python', starter: '', expectedOutput: '' }
+    case 'cloze':
+      return { id, type, text: '', input: 'bank', mode: 'text' }
+    case 'match':
+      return { id, type, prompt: '', pairs: [{ id: newId(), left: '', right: '' }, { id: newId(), left: '', right: '' }] }
+    case 'number':
+      return { id, type, prompt: '', answer: 0 }
+    case 'parsons':
+      return { id, type, prompt: '', language: 'cpp', lines: [] }
     case 'label-diagram':
       return {
         id, type, asset: '', alt: '', prompt: 'Label the parts of the diagram.',

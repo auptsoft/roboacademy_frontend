@@ -164,3 +164,84 @@ describe('describePythonError', () => {
       .toEqual({ text: 'ZeroDivisionError: division by zero', line: null })
   })
 })
+
+const armScene = (): SceneDefinition => ({
+  ...emptyScene(),
+  robot: { type: 'arm', start: { x: 0, z: 0, headingDeg: 0 } },
+  props: [{ id: 'block', shape: 'box', x: 0.2, z: 0, size: { x: 0.04, y: 0.04, z: 0.04 }, color: '#f00', mass: 0.1 }],
+})
+
+describe('robot arm in Python', () => {
+  it('picks a block up and puts it down somewhere else', async () => {
+    const { result, prints } = await runPython(
+      `robot.reach(20, 8)
+robot.reach(20, 1, speed=40)
+robot.close_gripper()
+print(robot.holding())
+
+def put_down(angle):
+    robot.reach(20, 10, 40)
+    robot.set_base(angle)
+    robot.reach(20, 1.5, 40)
+    robot.open_gripper()
+
+put_down(90)
+print(robot.holding(), robot.base_angle(), robot.gripper_height())
+`,
+      armScene(),
+    )
+    expect(result.outcome).toBe('completed')
+    expect(prints).toEqual(['True', 'False 90 1.5'])
+  }, 30_000)
+})
+
+const twoRobotScene = (): SceneDefinition => ({
+  ...emptyScene(),
+  robot: { type: 'diff-drive', start: { x: -0.5, z: -0.3, headingDeg: 0 } },
+  robots: [
+    { id: 'rover', type: 'rover', start: { x: -0.5, z: 0.3, headingDeg: 0 } },
+    { id: 'arm', type: 'arm', start: { x: 0.8, z: 0, headingDeg: 180 } },
+  ],
+})
+
+describe('several robots in Python', () => {
+  it('moves robots together, from inside a function too', async () => {
+    const { result, prints } = await runPython(
+      `def go_together(cm):
+    robots.rover.start.move(cm)
+    robots.arm.start.set_base(45)
+    robot.move(cm)
+    wait_for_all()
+
+go_together(30)
+print(robot.x(), robots.rover.x(), robots.arm.base_angle())
+`,
+      twoRobotScene(),
+    )
+    expect(result.outcome).toBe('completed')
+    expect(prints).toEqual(['-20.0 -20.0 45'])
+    expect(result.summary.durationMs).toBeLessThan(3200)
+  }, 30_000)
+
+  it('waits for one robot', async () => {
+    const { result, prints } = await runPython(
+      `robots.rover.start.turn_left(90)
+robots.rover.wait_until_done()
+print(robots.rover.heading() > 85)
+`,
+      twoRobotScene(),
+    )
+    expect(result.outcome).toBe('completed')
+    expect(prints).toEqual(['True'])
+  }, 30_000)
+})
+
+describe('the pen in Python', () => {
+  it('draws, and rejects unknown colours', async () => {
+    const ok = await runPython('robot.pen_down()\nrobot.pen_color("blue")\nrobot.move(10)\nrobot.pen_up()\n')
+    expect(ok.result.outcome).toBe('completed')
+    const bad = await runPython('robot.pen_color("pink")\n')
+    expect(bad.result.outcome).toBe('runtime_error')
+    expect(bad.result.summary.error?.message).toContain("There is no pen colour 'pink'")
+  }, 30_000)
+})

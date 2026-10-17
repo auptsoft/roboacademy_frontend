@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { getCapability, type SceneDefinition } from '@roboacademy/sim'
+import { getCapability, sceneRobots, type SceneDefinition } from '@roboacademy/sim'
 
 /**
  * Top-down map of a scene for the editor. Seen from above, +X is right and +Z is down, matching
  * the simulator; headings and wall rotations are counter-clockwise, so SVG rotates by -angle.
- * Clicking the floor reports the point, which the editor uses to place the robot.
+ * Clicking the floor reports the point, which the editor uses to place the main robot.
  */
-const props = defineProps<{ scene: SceneDefinition }>()
+const props = defineProps<{
+  scene: SceneDefinition
+  /** Shapes to show dashed over the floor, such as drawings learners must trace. */
+  guides?: { points: { x: number; z: number }[]; closed: boolean }[]
+}>()
 const emit = defineEmits<{ place: [point: { x: number; z: number }] }>()
 
 const width = computed(() => props.scene.arena.width)
@@ -17,7 +21,13 @@ const viewBox = computed(() => {
   return `${-width.value / 2 - pad} ${-depth.value / 2 - pad} ${width.value + pad * 2} ${depth.value + pad * 2}`
 })
 
-const robotSize = computed(() => getCapability(props.scene.robot.type)?.size ?? { width: 0.18, length: 0.2, height: 0.1 })
+const robots = computed(() =>
+  sceneRobots(props.scene).map((robot, i) => ({
+    ...robot,
+    size: getCapability(robot.type)?.size ?? { width: 0.18, length: 0.2, height: 0.1 },
+    fill: robot.color ?? (i === 0 ? '#2f6fec' : '#e8742a'),
+  })),
+)
 
 const gridLines = computed(() => {
   const lines: { x1: number; y1: number; x2: number; y2: number }[] = []
@@ -83,6 +93,16 @@ function onClick(event: MouseEvent) {
       fill="#8795a3"
       :transform="`translate(${wall.x} ${wall.z}) rotate(${-wall.rotationDeg})`"
     />
+    <component
+      :is="guide.closed ? 'polygon' : 'polyline'"
+      v-for="(guide, i) in guides ?? []"
+      :key="`guide-${i}`"
+      :points="guide.points.map((p) => `${p.x},${p.z}`).join(' ')"
+      fill="none"
+      stroke="#8e4ec6"
+      stroke-width="0.008"
+      stroke-dasharray="0.03 0.02"
+    />
     <template v-for="prop in scene.props" :key="prop.id">
       <circle v-if="prop.shape !== 'box'" :cx="prop.x" :cy="prop.z" :r="prop.size.x" :fill="prop.color" />
       <rect
@@ -94,17 +114,22 @@ function onClick(event: MouseEvent) {
         :fill="prop.color"
       />
     </template>
-    <g :transform="`translate(${scene.robot.start.x} ${scene.robot.start.z}) rotate(${-scene.robot.start.headingDeg})`">
+    <g
+      v-for="robot in robots"
+      :key="robot.id"
+      :transform="`translate(${robot.start.x} ${robot.start.z}) rotate(${-robot.start.headingDeg})`"
+    >
+      <title>{{ robot.id }}</title>
       <rect
-        :x="-robotSize.length / 2"
-        :y="-robotSize.width / 2"
-        :width="robotSize.length"
-        :height="robotSize.width"
-        fill="#2f6fec"
+        :x="-robot.size.length / 2"
+        :y="-robot.size.width / 2"
+        :width="robot.size.length"
+        :height="robot.size.width"
+        :fill="robot.fill"
         rx="0.015"
       />
       <polygon
-        :points="`${robotSize.length / 2},0 ${robotSize.length * 0.05},${-robotSize.width * 0.3} ${robotSize.length * 0.05},${robotSize.width * 0.3}`"
+        :points="`${robot.size.length / 2},0 ${robot.size.length * 0.05},${-robot.size.width * 0.3} ${robot.size.length * 0.05},${robot.size.width * 0.3}`"
         fill="#ffd23f"
       />
     </g>

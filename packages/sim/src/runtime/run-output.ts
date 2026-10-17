@@ -1,6 +1,7 @@
 import { getCapability } from '../robots'
 import { createLuaWorker, createProgramWorker } from './create-worker'
 import { createPythonWorker } from './python-worker-pool'
+import type { StartRobot } from './protocol'
 import type { WorkerLike } from './run-controller'
 
 /** 'blocks' means code already generated from a Blockly workspace (it runs as-is). */
@@ -16,7 +17,9 @@ const START_LIMIT_MS = 60_000
 const RUN_LIMIT_MS = 5_000
 const MAX_LINES = 500
 
-const ROBOT_COMMANDS = getCapability('diff-drive')!.commands.map((c) => ({ name: c.name, params: c.params.map((p) => p.name) }))
+const NO_ROBOT: StartRobot[] = [
+  { id: 'robot', api: 'wheeled', commands: getCapability('diff-drive')!.commands.map((c) => ({ name: c.name, params: c.params.map((p) => p.name) })) },
+]
 
 /**
  * Runs a program with no robot and collects what it prints - for coding exercises in Interactive
@@ -66,7 +69,7 @@ export async function runForOutput(
           if (lines.length < MAX_LINES) lines.push(message.text)
           break
         case 'call':
-          if (message.kind === 'tick') worker.postMessage({ type: 'reply', id: message.id, ok: true })
+          if (message.kind === 'tick' || message.kind === 'idle') worker.postMessage({ type: 'reply', id: message.id, ok: true })
           else worker.postMessage({ type: 'reply', id: message.id, ok: false, message: "There's no robot in this exercise - just print your answer." })
           break
         case 'done':
@@ -78,10 +81,10 @@ export async function runForOutput(
       }
     }
 
-    // The robot's commands are still declared: the language preludes bind them when the program
-    // starts (JavaScript's `robot` object takes move, turn, ... as arguments), so leaving them out
-    // fails every program before its first line. Calling one gets the "no robot" reply above.
-    worker.postMessage({ type: 'start', code, commands: ROBOT_COMMANDS })
+    // A robot is still declared: the language preludes build `robot` from it when the program
+    // starts, so leaving it out fails every program before its first line. Calling one of its
+    // commands gets the "no robot" reply above.
+    worker.postMessage({ type: 'start', code, robots: NO_ROBOT })
   })
 }
 

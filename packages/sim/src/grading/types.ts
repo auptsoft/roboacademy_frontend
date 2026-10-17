@@ -16,6 +16,24 @@ export type Predicate =
   | { kind: 'propHeldBy'; propId: string; robotId?: string }
   /** Reserved for the robot arm type. Never satisfied by robots without joints. */
   | { kind: 'jointAtAngle'; robotId?: string; joint: string; value: number; toleranceDeg: number }
+  /**
+   * Ink matches a shape: a list of floor points, joined in order (and back to the start when
+   * `closed`). Traced in place, or - with `anywhere` - drawn the same size anywhere, turned any way.
+   * At least `coverage` (0-1, default 0.9) of the shape must be inked within `toleranceM`; when
+   * `strict` (the default) the same share of the ink must lie on the shape too. Only ink from
+   * `robotId` counts when given (otherwise every robot's), and only in `color` (a pen colour name).
+   */
+  | {
+      kind: 'inkMatches'
+      shape: Vec2[]
+      closed?: boolean
+      anywhere?: boolean
+      toleranceM: number
+      coverage?: number
+      strict?: boolean
+      robotId?: string
+      color?: string
+    }
   | { kind: 'all'; of: Predicate[] }
   | { kind: 'any'; of: Predicate[] }
   /** Children must each have become true, in order, at some point during the run. */
@@ -33,10 +51,24 @@ export interface Objective {
   predicate: Predicate
 }
 
+/**
+ * The target for a third challenge star (Gamification design §7): read by the server, which awards
+ * stars, and ignored by the evaluator. A run that meets every objective gets two stars, and three
+ * when it is also within par. Text programs are judged on time only.
+ */
+export interface ObjectivePar {
+  /** Most simulated time, in milliseconds. */
+  simTimeMs?: number
+  /** Most blocks in a blocks program (shadow blocks don't count). */
+  blocks?: number
+}
+
 export interface ObjectiveSet {
   version: 1
   /** Pass threshold, 0-100. When unset, passing means satisfying every required objective. */
   passMark?: number
+  /** Optional target for three stars. Without it, meeting every objective is three stars. */
+  par?: ObjectivePar
   objectives: Objective[]
 }
 
@@ -48,6 +80,10 @@ export interface WorldSnapshot {
   joints: Map<string, Record<string, number>>
   /** robotId → id of the prop it is holding. */
   held: Map<string, string>
+  /** robotId → what its pen has drawn, as strokes with a hex colour. Live arrays: read, don't keep. */
+  ink?: Map<string, { color: string; points: Vec2[] }[]>
+  /** Changes whenever any ink does, so drawing checks can skip work when nothing new was drawn. */
+  inkVersion?: number
 }
 
 export interface ObjectiveStatus {

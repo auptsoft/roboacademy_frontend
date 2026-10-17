@@ -3,14 +3,17 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { RaCard, RaChip } from '@roboacademy/ui'
-import { Plus, Trash2, Copy, ChevronDown } from 'lucide-vue-next'
+import { Plus, Copy, ChevronDown } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import Input from '@/components/ui/input.vue'
 import Label from '@/components/ui/label.vue'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
 import { Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import Pagination from '@/components/Pagination.vue'
-import QuestionOptionsEditor from '@/components/QuestionOptionsEditor.vue'
+import AssessmentQuestionRow from '@/components/AssessmentQuestionRow.vue'
+import QuizLayoutFields from '@/components/questions/QuizLayoutFields.vue'
+import { authoredToRow, newQuestionRow, rowToQuestionInput, type QuestionRow } from '@/components/questions/question-rows'
+import { QUIZ_KIND_LABELS, definitionErrors } from '@/components/questions/question-kinds'
 import RichTextEditor from '@/components/RichTextEditor.vue'
 import CopyAssessmentToTenantDialog from '@/components/CopyAssessmentToTenantDialog.vue'
 import AIDraftPanel from '@/components/AIDraftPanel.vue'
@@ -31,7 +34,9 @@ import {
   type AttemptItem,
   type QuestionBankItemSummary,
   type UpdateAssessmentContentRequest,
+  type QuestionDisplay,
 } from '@/api/assessment'
+import { provideAssessmentAssets } from '@/components/questions/assessment-assets'
 
 const route = useRoute()
 const router = useRouter()
@@ -66,6 +71,8 @@ async function loadAssessment() {
     generalForm.order = assessment.value.order
     generalForm.preText = assessment.value.preText ?? ''
     generalForm.postText = assessment.value.postText ?? ''
+    generalForm.questionDisplay = assessment.value.questionDisplay ?? 'AllOnOnePage'
+    generalForm.allowBackNavigation = assessment.value.allowBackNavigation ?? true
     resetContentForm()
     try {
       const course = await getCourse(assessment.value.courseId)
@@ -96,6 +103,7 @@ watch(assessmentId, () => {
 // --- General (title / required / order / pre/post text) ---
 const generalForm = reactive({
   title: '', isRequired: true, allowUnenrolled: false, order: 1, preText: '', postText: '',
+  questionDisplay: 'AllOnOnePage' as QuestionDisplay, allowBackNavigation: true,
 })
 const generalSubmitting = ref(false)
 const generalErrors = ref<Record<string, string[]>>({})
@@ -111,6 +119,10 @@ async function submitGeneral() {
       order: Number(generalForm.order),
       preText: generalForm.preText || null,
       postText: generalForm.postText || null,
+      // Layout isn't graded content, so it stays editable after attempts exist.
+      ...(assessment.value?.type === 'Quiz'
+        ? { questionDisplay: generalForm.questionDisplay, allowBackNavigation: generalForm.allowBackNavigation }
+        : {}),
     })
     if (assessment.value) {
       assessment.value = {
@@ -139,18 +151,6 @@ async function loadQuestionBank() {
   questionBank.value = result.items
 }
 
-interface QuestionRow {
-  source: 'bank' | 'inline'
-  bankItemId: string
-  text: string
-  options: string[]
-  correctOptionIndex: number
-}
-
-function newQuestionRow(): QuestionRow {
-  return { source: 'inline', bankItemId: '', text: '', options: ['', ''], correctOptionIndex: 0 }
-}
-
 const contentForm = reactive({
   maxAttempts: '', timeLimitMinutes: '',
   passMark: 50,
@@ -161,8 +161,12 @@ const contentQuestionRows = ref<QuestionRow[]>([newQuestionRow()])
 const contentSubmitting = ref(false)
 const contentErrors = ref<Record<string, string[]>>({})
 
+// Diagrams in label-the-diagram questions upload to (and preview from) the assessment store.
+const { loadUrls: loadQuestionImages } = provideAssessmentAssets()
+
 function resetContentForm() {
   if (!assessment.value) return
+  void loadQuestionImages(assessment.value.questions.map(q => q.definition as { asset?: string } | null))
   contentForm.maxAttempts = assessment.value.maxAttempts ? String(assessment.value.maxAttempts) : ''
   contentForm.timeLimitMinutes = assessment.value.timeLimitMinutes ? String(assessment.value.timeLimitMinutes) : ''
   contentForm.passMark = assessment.value.passMark ?? 50
@@ -170,13 +174,7 @@ function resetContentForm() {
   contentForm.acceptedContentTypes = assessment.value.acceptedContentTypes?.join(', ') ?? ''
   contentForm.maxFileSizeBytes = assessment.value.maxFileSizeBytes ? String(assessment.value.maxFileSizeBytes) : ''
   contentQuestionRows.value = assessment.value.questions.length > 0
-    ? assessment.value.questions.map((q) => ({
-        source: q.bankItemId ? 'bank' as const : 'inline' as const,
-        bankItemId: q.bankItemId ?? '',
-        text: q.text,
-        options: q.options,
-        correctOptionIndex: q.correctOptionIndex,
-      }))
+    ? assessment.value.questions.map(authoredToRow)
     : [newQuestionRow()]
 }
 
@@ -200,11 +198,7 @@ async function submitContent() {
 
     if (assessment.value.type === 'Quiz') {
       request.passMark = Number(contentForm.passMark)
-      request.questions = contentQuestionRows.value.map((row) =>
-        row.source === 'bank'
-          ? { bankItemId: row.bankItemId }
-          : { text: row.text, options: row.options, correctOptionIndex: row.correctOptionIndex },
-      )
+      request.questions = contentQuestionRows.value.map(rowToQuestionInput)
     } else if (assessment.value.type === 'Written') {
       request.prompt = contentForm.prompt
     } else {
@@ -397,6 +391,12 @@ async function submitGrade() {
                       <input v-model="generalForm.isRequired" type="checkbox" class="size-4 accent-(--brand-blue)"> Required to proceed
                     </label>
 
+                    <QuizLayoutFields
+                      v-if="assessment.type === 'Quiz'"
+                      v-model:display="generalForm.questionDisplay"
+                      v-model:allow-back="generalForm.allowBackNavigation"
+                    />
+
                     <label class="flex items-center gap-1.5 text-sm text-(--fg-2)">
                       <input v-model="generalForm.allowUnenrolled" type="checkbox" class="size-4 accent-(--brand-blue)"> Allow un-enrolled learners
                     </label>
@@ -456,7 +456,7 @@ async function submitGrade() {
                       <Input id="content-max-attempts" v-model="contentForm.maxAttempts" type="number" min="1" />
                     </div>
                     <div class="flex flex-col gap-1.5">
-                      <Label for="content-time-limit">Time Limit, min (optional)</Label>
+                      <Label for="content-time-limit">Time allowed per attempt, min (optional)</Label>
                       <Input id="content-time-limit" v-model="contentForm.timeLimitMinutes" type="number" min="1" />
                     </div>
                   </div>
@@ -469,58 +469,15 @@ async function submitGrade() {
 
                     <div class="flex flex-col gap-3">
                       <Label>Questions</Label>
-                      <div
-                        v-for="(row, index) in contentQuestionRows"
+                      <AssessmentQuestionRow
+                        v-for="(_, index) in contentQuestionRows"
                         :key="index"
-                        class="rounded-(--ra-md) border border-(--line-2) p-3"
-                      >
-                        <div class="mb-2 flex items-center justify-between">
-                          <div class="flex gap-3 text-xs">
-                            <label class="flex items-center gap-1.5">
-                              <input v-model="row.source" type="radio" value="inline" class="accent-(--brand-blue)"> Inline
-                            </label>
-                            <label class="flex items-center gap-1.5">
-                              <input v-model="row.source" type="radio" value="bank" class="accent-(--brand-blue)"> From Question Bank
-                            </label>
-                          </div>
-                          <Button
-                            v-if="contentQuestionRows.length > 1"
-                            variant="ghost"
-                            size="icon-sm"
-                            type="button"
-                            aria-label="Remove question"
-                            @click="removeContentQuestionRow(index)"
-                          >
-                            <Trash2 :size="14" />
-                          </Button>
-                        </div>
-
-                        <template v-if="row.source === 'bank'">
-                          <select
-                            v-model="row.bankItemId"
-                            required
-                            class="h-9 w-full rounded-(--ra-md) border border-(--line-2) bg-(--bg-3) px-2.5 text-sm text-(--fg-2) outline-none"
-                          >
-                            <option value="" disabled>Select a question</option>
-                            <option v-for="qb in questionBank" :key="qb.id" :value="qb.id">{{ qb.text }}</option>
-                          </select>
-                        </template>
-                        <template v-else>
-                          <textarea
-                            v-model="row.text"
-                            rows="2"
-                            placeholder="Question text"
-                            required
-                            class="mb-2 w-full resize-none rounded-(--ra-md) border border-(--line-2) bg-(--bg-3) px-2.5 py-1.75 font-sans text-sm text-(--fg-2) outline-none placeholder:text-(--fg-4)"
-                          />
-                          <QuestionOptionsEditor
-                            :options="row.options"
-                            :correct-option-index="row.correctOptionIndex"
-                            @update:options="(v) => (row.options = v)"
-                            @update:correct-option-index="(v) => (row.correctOptionIndex = v)"
-                          />
-                        </template>
-                      </div>
+                        v-model="contentQuestionRows[index]!"
+                        :question-bank="questionBank"
+                        :removable="contentQuestionRows.length > 1"
+                        :errors="definitionErrors(contentErrors, `Questions[${index}]`)"
+                        @remove="removeContentQuestionRow(index)"
+                      />
                       <Button variant="outline" size="sm" type="button" class="self-start" @click="addContentQuestionRow">
                         <Plus :size="14" /> Add Question
                       </Button>
@@ -563,7 +520,8 @@ async function submitGrade() {
                     <div class="flex flex-col gap-4">
                       <div v-for="q in assessment.questions" :key="q.id" class="rounded-(--ra-md) border border-(--line-2) p-3">
                         <p class="m-0 text-sm font-semibold text-(--fg-1)">{{ q.order }}. {{ q.text }}</p>
-                        <ul class="m-0 mt-2 flex list-none flex-col gap-1 p-0">
+                        <p v-if="q.kind && q.kind !== 'choice'" class="m-0 mt-1 text-xs text-(--fg-3)">{{ QUIZ_KIND_LABELS[q.kind] }}</p>
+                        <ul v-else class="m-0 mt-2 flex list-none flex-col gap-1 p-0">
                           <li
                             v-for="(option, index) in q.options"
                             :key="index"
@@ -659,6 +617,7 @@ async function submitGrade() {
                 >
                   <span class="font-mono text-[13px] text-(--fg-2)">{{ attempt.userId }}</span>
                   <RaChip :tone="statusTone[attempt.status]">{{ attempt.status }}</RaChip>
+                  <RaChip v-if="attempt.submittedAutomatically" tone="neutral">Time ran out</RaChip>
                   <span class="text-sm text-(--fg-2)">{{ attempt.score ?? '—' }}</span>
                   <span class="text-sm text-(--fg-2)">
                     <template v-if="attempt.passed === null">—</template>

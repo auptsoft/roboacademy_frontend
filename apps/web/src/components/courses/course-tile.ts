@@ -1,4 +1,5 @@
 import type { CourseCatalogItem, EnrolledCourseSummary, EnrolledPathSummary, LearningPathItem } from '@/api/learning'
+import { formatPrice } from '@roboacademy/ui'
 import type { CourseTileStatus } from './CourseTile.vue'
 
 export function enrolledCourseStatus(c: EnrolledCourseSummary): CourseTileStatus {
@@ -31,6 +32,7 @@ export function catalogTileProps(c: CourseCatalogItem) {
     metaLeft: c.description,
     metaRight: `${c.lessonCount} Lessons`,
     tag: c.level,
+    price: c.price ? (c.purchased ? 'Purchased' : formatPrice(c.price.amountMinor, c.price.currency)) : null,
   }
 }
 

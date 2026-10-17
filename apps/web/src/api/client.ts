@@ -19,6 +19,11 @@ export class ApiError extends Error {
   // with learner-facing wording - a learner can't upgrade a plan, only ask their school.
   planErrorCode?: string
 
+  // Any other stable error code the API put in data.code (e.g. payment_required), with the rest
+  // of that payload, for callers that branch on it.
+  code?: string
+  details?: Record<string, unknown>
+
   constructor(status: number, message: string, fieldErrors?: Record<string, string[]>, planErrorCode?: string) {
     super(describePlanError(planErrorCode) ?? message)
     this.name = 'ApiError'
@@ -139,7 +144,12 @@ async function apiFetchEnvelope<T>(path: string, init: RequestInit = {}): Promis
     if (response.status === 403 && planErrorCode === 'subscription_expired') {
       endSessionForLockedSchool()
     }
-    throw new ApiError(response.status, message, fieldErrors, planErrorCode)
+    const error = new ApiError(response.status, message, fieldErrors, planErrorCode)
+    if (envelope?.data && typeof envelope.data === 'object' && typeof (envelope.data as { code?: unknown }).code === 'string') {
+      error.code = (envelope.data as { code: string }).code
+      error.details = envelope.data as Record<string, unknown>
+    }
+    throw error
   }
 
   return (envelope as ApiEnvelope<T>) ?? { isSuccessful: true, message: '', data: null }

@@ -3,7 +3,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { RaKpi, RaCard, RaStatusDot } from '@roboacademy/ui'
-import { MoreVertical, Plus } from 'lucide-vue-next'
+import { MoreVertical, Plus, Trophy } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import Input from '@/components/ui/input.vue'
 import Label from '@/components/ui/label.vue'
@@ -28,6 +28,7 @@ import { ApiError } from '@/api/client'
 import { usePagedList } from '@/composables/usePagedList'
 import { listTenants, createTenant, deactivateTenant, reactivateTenant, type Tenant } from '@/api/tenancy'
 import type { SubscriptionState } from '@/api/plans'
+import { runGamificationBackfill } from '@/api/gamification'
 import { enterTenant, hasPermission, isImpersonating } from '@/store/auth'
 import { getEnv } from '@/lib/runtime-env'
 
@@ -126,6 +127,35 @@ async function submitCreate() {
 }
 
 // --- Deactivate / reactivate ---
+// Gamification backfill: XP and badges for history from before gamification existed. Platform
+// admins only, and not while inside a tenant (the endpoint is a platform one).
+const canBackfill = hasPermission('gamification:manage') && !isImpersonating()
+/** null = closed; 'all' = every tenant; otherwise the tenant to backfill. */
+const backfillTarget = ref<'all' | Tenant | null>(null)
+const backfilling = ref(false)
+
+async function submitBackfill() {
+  const target = backfillTarget.value
+  if (!target) return
+  backfilling.value = true
+  try {
+    const { tenants } = await runGamificationBackfill(target === 'all' ? undefined : target.tenantId)
+    const learners = tenants.reduce((sum, t) => sum + t.learners, 0)
+    const rewarded = tenants.reduce((sum, t) => sum + t.newlyRewarded, 0)
+    const scope = target === 'all' ? `${tenants.length} tenant${tenants.length === 1 ? '' : 's'}` : target.name
+    toast.success(`Backfill finished for ${scope}.`, {
+      description: rewarded === 0
+        ? `${learners} learner${learners === 1 ? '' : 's'} checked; everything was already recorded.`
+        : `${rewarded} of ${learners} learner${learners === 1 ? '' : 's'} got new XP or badges.`,
+    })
+    backfillTarget.value = null
+  } catch (error) {
+    toast.error(error instanceof ApiError ? error.message : 'The backfill failed.')
+  } finally {
+    backfilling.value = false
+  }
+}
+
 const togglingTenantId = ref<string | null>(null)
 
 async function toggleActive(tenant: Tenant) {
@@ -158,10 +188,16 @@ async function toggleActive(tenant: Tenant) {
         <h1 class="m-0 text-[32px] font-bold tracking-[-0.01em] text-(--fg-1)">Tenant Management</h1>
         <p class="mt-1.5 text-sm text-(--fg-3)">Provision schools, manage their hostnames, and control platform access.</p>
       </div>
-      <Button @click="createOpen = true">
-        <Plus :size="14" />
-        Create Tenant
-      </Button>
+      <div class="flex items-center gap-2 max-md:flex-col max-md:items-stretch">
+        <Button v-if="canBackfill" variant="outline" @click="backfillTarget = 'all'">
+          <Trophy :size="14" />
+          Backfill XP
+        </Button>
+        <Button @click="createOpen = true">
+          <Plus :size="14" />
+          Create Tenant
+        </Button>
+      </div>
     </div>
 
     <div class="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-4">
@@ -239,7 +275,7 @@ async function toggleActive(tenant: Tenant) {
         <div class="flex justify-end max-md:w-full max-md:justify-start">
           <DropdownMenu>
             <DropdownMenuTrigger
-              class="inline-flex size-9 items-center justify-center rounded-none border border-transparent bg-transparent text-(--fg-3) outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
+              class="inline-flex size-9 items-center justify-center rounded-lg border border-transparent bg-transparent text-(--fg-3) outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
             >
               <MoreVertical :size="16" />
               <span class="sr-only">Open actions</span>
@@ -253,6 +289,7 @@ async function toggleActive(tenant: Tenant) {
               >
                 {{ enteringTenantId === tenant.tenantId ? 'Entering…' : 'Enter tenant' }}
               </DropdownMenuItem>
+              <DropdownMenuItem v-if="canBackfill" @select="backfillTarget = tenant">Backfill XP</DropdownMenuItem>
               <template v-if="tenant.tenantId !== PLATFORM_TENANT_ID">
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
@@ -310,6 +347,27 @@ async function toggleActive(tenant: Tenant) {
             </Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+    <Dialog :open="backfillTarget !== null" @update:open="(open) => { if (!open && !backfilling) backfillTarget = null }">
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Backfill XP and badges</DialogTitle>
+          <DialogDescription>
+            Gives learners XP and badges for lessons, courses, paths, assessments, simulation challenges and robot lab
+            sessions they completed before gamification existed{{ backfillTarget === 'all' ? ', in every tenant' : backfillTarget ? ` in ${backfillTarget.name}` : '' }}.
+            It's safe to run again: nothing is counted twice, and learners aren't notified.
+          </DialogDescription>
+        </DialogHeader>
+        <p v-if="backfillTarget === 'all'" class="m-0 text-sm text-(--fg-3)">
+          Every tenant is processed in one request, which can take a while on a large platform. You can also run it for one tenant from its row menu.
+        </p>
+        <DialogFooter>
+          <Button variant="outline" type="button" :disabled="backfilling" @click="backfillTarget = null">Cancel</Button>
+          <Button type="button" :disabled="backfilling" @click="submitBackfill">
+            {{ backfilling ? 'Backfilling…' : 'Run backfill' }}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   </div>

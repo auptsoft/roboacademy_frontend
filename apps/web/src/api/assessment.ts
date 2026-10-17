@@ -1,3 +1,4 @@
+import type { QuizDefinition, QuizQuestionKind, QuizResponse } from '@roboacademy/ui'
 import { apiFetch, apiFetchPaged, type PageMeta } from '@/api/client'
 
 export interface AssessmentSummary {
@@ -18,9 +19,14 @@ export function listModuleAssessments(moduleId: string): Promise<AssessmentSumma
 
 export interface AssessmentQuestion {
   id: string
+  /** Multiple choice: the question. Other kinds: a summary (the definition has the prompt). */
   text: string
+  /** Multiple choice only. */
   options: string[]
   order: number
+  kind: QuizQuestionKind
+  /** Non-choice kinds: the question without its answers (the server grades). */
+  definition: QuizDefinition | null
 }
 
 export interface AssessmentDetail {
@@ -38,6 +44,10 @@ export interface AssessmentDetail {
   timeLimitMinutes: number | null
   passMark: number | null
   questions: AssessmentQuestion[]
+  /** Quizzes: all questions on one page, or one at a time. */
+  questionDisplay: 'AllOnOnePage' | 'OneAtATime'
+  /** One at a time: whether learners can go back to change earlier answers. */
+  allowBackNavigation: boolean
 }
 
 // Already open to any authenticated user on the backend — no new endpoint needed for this one.
@@ -59,6 +69,35 @@ export interface AttemptSummary {
   passed: boolean | null
   feedback: string | null
   gradedAt: string | null
+  /** Handed in because time ran out (by the page at zero, or by the server for one left open). */
+  submittedAutomatically: boolean
+  /** In-progress attempts: the answers saved so far. */
+  draft: AttemptDraft | null
+  /** One-at-a-time quizzes: the question on screen, and the furthest reached (0-based). */
+  currentQuestion: number | null
+  furthestQuestion: number | null
+  /** The server's clock when this was sent, to correct the countdown for the device's clock. */
+  serverNow: string
+}
+
+/** The answers so far on an in-progress attempt, by type. */
+export interface AttemptDraft {
+  responses?: QuizResponse[]
+  responseText?: string
+  fileReference?: string
+}
+
+// Saves the answers so far. keepalive lets the last save survive the tab closing.
+export function saveAttemptDraft(
+  attemptId: string,
+  request: { draft: AttemptDraft; currentQuestion?: number; furthestQuestion?: number },
+  options: { keepalive?: boolean } = {},
+): Promise<{ attemptId: string; savedAt: string; expiresAt: string | null; furthestQuestion: number | null }> {
+  return apiFetch(`/api/assessment/attempts/${attemptId}/draft`, {
+    method: 'PUT',
+    body: JSON.stringify(request),
+    keepalive: options.keepalive,
+  })
 }
 
 export function listMyAttempts(assessmentId: string): Promise<AttemptSummary[]> {
@@ -100,7 +139,10 @@ export function startAttempt(assessmentId: string): Promise<StartAttemptResult> 
 }
 
 export interface SubmitAttemptRequest {
+  /** Multiple choice only: the selected option per question. */
   answers?: number[]
+  /** Any question kind: one response per question, in order. */
+  responses?: QuizResponse[]
   responseText?: string
   fileReference?: string
 }

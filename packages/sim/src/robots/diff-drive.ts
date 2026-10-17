@@ -1,17 +1,32 @@
+import { PEN_COMMANDS } from './pen'
 import type { RobotCapability } from './types'
 
-/** Top wheel speed at 100 %, in metres per second. */
-export const DIFF_DRIVE_MAX_SPEED = 0.4
-/** Distance between the wheels, in metres. Sets how fast opposite wheel speeds turn the robot. */
-export const DIFF_DRIVE_WHEEL_BASE = 0.16
-/** Range of the front distance sensor, in metres. Readings beyond it report this value. */
-export const DIFF_DRIVE_DISTANCE_RANGE = 2
-/** How far ahead of the robot's centre the two line sensors sit, and how far apart, in metres. */
-export const DIFF_DRIVE_LINE_SENSOR_OFFSET = { forward: 0.09, side: 0.03 }
+/**
+ * Drive and sensor geometry for a wheeled robot steered by its left and right wheel speeds. The
+ * two-wheel robot and the rover share commands and sensors and differ only in these numbers.
+ */
+export interface WheeledSpec {
+  /** Top wheel speed at 100 %, in metres per second. */
+  maxSpeed: number
+  /** Distance between the left and right wheels, in metres. Sets how fast opposite wheel speeds turn the robot. */
+  wheelBase: number
+  /** Range of the front distance sensor, in metres. Readings beyond it report this value. */
+  distanceRange: number
+  /** How far ahead of the robot's centre the two line sensors sit, and how far apart, in metres. */
+  lineSensorOffset: { forward: number; side: number }
+}
+
+export const diffDriveWheels: WheeledSpec = {
+  maxSpeed: 0.4,
+  wheelBase: 0.16,
+  distanceRange: 2,
+  lineSensorOffset: { forward: 0.09, side: 0.03 },
+}
 
 export const diffDrive: RobotCapability = {
   type: 'diff-drive',
   label: 'Two-wheel robot',
+  api: 'wheeled',
   size: { width: 0.18, length: 0.2, height: 0.1 },
   commands: [
     {
@@ -53,6 +68,7 @@ export const diffDrive: RobotCapability = {
       label: 'wait',
       params: [{ name: 'ms', label: 'for', unit: 'ms', min: 0, max: 60_000, default: 1000 }],
     },
+    ...PEN_COMMANDS,
   ],
   sensors: [
     { name: 'distance_front', label: 'front distance', kind: 'number', unit: 'm' },

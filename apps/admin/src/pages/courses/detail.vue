@@ -14,11 +14,14 @@ import CourseGeneralCard, { type CourseGeneralFormState } from '@/components/Cou
 import CoursePublishCard from '@/components/CoursePublishCard.vue'
 import CourseVisibilityCard from '@/components/CourseVisibilityCard.vue'
 import CourseCertificationCard from '@/components/CourseCertificationCard.vue'
+import CoursePriceCard from '@/components/CoursePriceCard.vue'
 import { hasPermission } from '@/store/auth'
+import { hasTenantFeature } from '@/branding'
 import CourseModuleHeader, { type CourseModuleEditForm } from '@/components/CourseModuleHeader.vue'
 import CourseItemRow from '@/components/CourseItemRow.vue'
 import LessonFormFields, { type LessonFormState } from '@/components/LessonFormFields.vue'
-import AssessmentFormFields, { type AssessmentFormState, type QuestionRow } from '@/components/AssessmentFormFields.vue'
+import AssessmentFormFields, { type AssessmentFormState } from '@/components/AssessmentFormFields.vue'
+import { newQuestionRow as emptyQuestionRow, rowToQuestionInput, type QuestionRow } from '@/components/questions/question-rows'
 import { ApiError } from '@/api/client'
 import {
   getCourse,
@@ -41,6 +44,7 @@ import {
   getCourseIntroVideoUrl,
   copyCourseToTenants,
   setCourseVisibility,
+  setCoursePrice,
   setCoursePracticalRequirement,
   visibilityLabel,
   type CourseDetail,
@@ -58,6 +62,7 @@ import {
   type QuestionBankItemSummary,
   type CreateAssessmentRequest,
 } from '@/api/assessment'
+import { provideAssessmentAssets } from '@/components/questions/assessment-assets'
 
 const route = useRoute()
 const router = useRouter()
@@ -68,10 +73,13 @@ const canAuthor = hasPermission('learning:courses:author')
 const canManageVisibility = hasPermission('learning:courses:manage-visibility')
 const canManageEnrolments = hasPermission('learning:enrolments:manage')
 const canManageCertification = hasPermission('learning:courses:manage-certification-requirements')
+// Paid courses: the price permission, and a plan that includes selling.
+const canPrice = hasPermission('learning:courses:price') && hasTenantFeature('paid_courses')
 
 const sections = [
   ...(canAuthor ? [{ id: 'general', label: 'General' }, { id: 'modules', label: 'Modules, Lessons & Assessments' }] : []),
   ...(canManageVisibility ? [{ id: 'visibility', label: 'Visibility' }] : []),
+  ...(canPrice ? [{ id: 'price', label: 'Price' }] : []),
   ...(canManageCertification ? [{ id: 'certification', label: 'Certification' }] : []),
   ...(canAuthor ? [{ id: 'publish', label: 'Publish' }] : []),
 ]
@@ -346,6 +354,28 @@ async function saveVisibility(visibility: CourseVisibility) {
     toast.error(error instanceof ApiError ? error.message : 'Failed to update visibility.')
   } finally {
     savingVisibility.value = false
+  }
+}
+
+// --- Price ---
+const savingPrice = ref(false)
+const priceError = ref<string | null>(null)
+const priceNeedsPayouts = ref(false)
+
+async function savePrice(amountMinor: number | null) {
+  if (!course.value) return
+  savingPrice.value = true
+  priceError.value = null
+  priceNeedsPayouts.value = false
+  try {
+    const result = await setCoursePrice(courseId.value, amountMinor, amountMinor === null ? null : 'NGN')
+    course.value.price = result.price
+    toast.success(result.price ? 'Price saved.' : 'This course is now free.')
+  } catch (error) {
+    priceError.value = error instanceof ApiError ? error.message : 'Failed to save the price.'
+    priceNeedsPayouts.value = error instanceof ApiError && error.code === 'payouts_not_configured'
+  } finally {
+    savingPrice.value = false
   }
 }
 
@@ -798,15 +828,18 @@ async function loadQuestionBank() {
 }
 
 function newQuestionRow(): QuestionRow {
-  return { source: 'inline', bankItemId: '', text: '', options: ['', ''], correctOptionIndex: 0 }
+  return emptyQuestionRow()
 }
+
+// Diagrams in new quiz questions upload to the assessment store.
+provideAssessmentAssets()
 
 const addAssessmentModuleId = ref<string | null>(null)
 const assessmentCreating = ref(false)
 const assessmentErrors = ref<Record<string, string[]>>({})
 const assessmentForm = ref<AssessmentFormState>({
   type: 'Quiz', title: '', isRequired: true, allowUnenrolled: false, order: 1,
-  maxAttempts: '', timeLimitMinutes: '', passMark: 50, prompt: '',
+  maxAttempts: '', timeLimitMinutes: '', questionDisplay: 'AllOnOnePage', allowBackNavigation: true, passMark: 50, prompt: '',
   acceptedContentTypes: '', maxFileSizeBytes: '',
   questions: [newQuestionRow()],
 })
@@ -815,7 +848,7 @@ function openAddAssessment(mod: CourseModuleItem) {
   addAssessmentModuleId.value = mod.id
   assessmentForm.value = {
     type: 'Quiz', title: '', isRequired: true, allowUnenrolled: false, order: orderedItems(mod).length + 1,
-    maxAttempts: '', timeLimitMinutes: '', passMark: 50, prompt: '',
+    maxAttempts: '', timeLimitMinutes: '', questionDisplay: 'AllOnOnePage', allowBackNavigation: true, passMark: 50, prompt: '',
     acceptedContentTypes: '', maxFileSizeBytes: '',
     questions: [newQuestionRow()],
   }
@@ -839,11 +872,9 @@ async function submitAddAssessment() {
 
     if (assessmentForm.value.type === 'Quiz') {
       request.passMark = Number(assessmentForm.value.passMark)
-      request.questions = assessmentForm.value.questions.map((row) =>
-        row.source === 'bank'
-          ? { bankItemId: row.bankItemId }
-          : { text: row.text, options: row.options, correctOptionIndex: row.correctOptionIndex },
-      )
+      request.questions = assessmentForm.value.questions.map(rowToQuestionInput)
+      request.questionDisplay = assessmentForm.value.questionDisplay
+      request.allowBackNavigation = assessmentForm.value.allowBackNavigation
     } else if (assessmentForm.value.type === 'Written') {
       request.prompt = assessmentForm.value.prompt
     } else {
@@ -1132,6 +1163,16 @@ async function copyToTenants(targetTenantIds: string[]) {
             :state="course.state"
             :saving="savingVisibility"
             @save="saveVisibility"
+          />
+
+          <CoursePriceCard
+            v-if="canPrice"
+            :price="course.price"
+            :visibility="course.visibility"
+            :saving="savingPrice"
+            :error="priceError"
+            :needs-payouts="priceNeedsPayouts"
+            @save="savePrice"
           />
 
           <CourseCertificationCard

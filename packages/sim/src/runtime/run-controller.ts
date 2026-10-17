@@ -2,7 +2,7 @@ import type { GradingResult } from '../grading/types'
 import { CommandError } from '../engine/commands'
 import { PHYSICS_STEP_SEC } from '../engine/physics'
 import type { RunOutcome, RunSummary, Simulation } from '../engine/simulation'
-import type { HostToWorker, WorkerToHost } from './protocol'
+import type { CallKind, HostToWorker, WorkerToHost } from './protocol'
 
 const STEP_MS = PHYSICS_STEP_SEC * 1000
 /** Steps allowed per call to `advance`, so a slow frame doesn't turn into a burst. */
@@ -51,6 +51,8 @@ export class RunController {
   private startedAtMs = 0
   private programStarted = false
   private lastBlockId: string | null = null
+  /** Set once the robots have been stopped after the program ended. */
+  private haltedAfterProgram = false
 
   private readonly sim: Simulation
   private readonly createWorker: () => WorkerLike
@@ -89,7 +91,11 @@ export class RunController {
     worker.postMessage({
       type: 'start',
       code,
-      commands: this.sim.capability.commands.map((c) => ({ name: c.name, params: c.params.map((p) => p.name) })),
+      robots: this.sim.robots.map(({ id, capability }) => ({
+        id,
+        api: capability.api,
+        commands: capability.commands.map((c) => ({ name: c.name, params: c.params.map((p) => p.name) })),
+      })),
     })
   }
 
@@ -132,6 +138,9 @@ export class RunController {
       }
 
       if (this.program === 'finished') {
+        // Commands the program started without waiting for still play out.
+        if (this.sim.busy) continue
+        this.haltAfterProgram()
         this.settleRemainingMs -= STEP_MS
         if (this.settleRemainingMs <= 0) {
           this.endAfterProgram()
@@ -169,7 +178,7 @@ export class RunController {
         this.computingSinceMs = this.now()
         break
       case 'call':
-        this.onCall(message.id, message.kind, message.name, message.args)
+        this.onCall(message.id, message.kind, message.name, message.args, message.robot, message.wait)
         break
       case 'highlight':
         this.lastBlockId = message.blockId
@@ -181,7 +190,7 @@ export class RunController {
       case 'done':
         this.program = 'finished'
         this.terminateWorker()
-        this.sim.halt()
+        if (!this.sim.busy) this.haltAfterProgram()
         break
       case 'error':
         this.end('runtime_error', { message: message.message, blockId: message.location ?? this.lastBlockId })
@@ -189,7 +198,7 @@ export class RunController {
     }
   }
 
-  private onCall(id: number, kind: 'command' | 'sensor' | 'tick', name: string, args: Record<string, unknown>): void {
+  private onCall(id: number, kind: CallKind, name: string, args: Record<string, unknown>, robot?: string, wait?: boolean): void {
     const reply = (message: HostToWorker) => this.worker?.postMessage(message)
     const replyError = (error: unknown) =>
       reply({ type: 'reply', id, ok: false, message: error instanceof Error ? error.message : String(error) })
@@ -197,14 +206,28 @@ export class RunController {
     if (kind === 'sensor') {
       // Sensors read the current simulated instant; no time passes.
       try {
-        reply({ type: 'reply', id, ok: true, value: this.sim.sensor(name) })
+        reply({ type: 'reply', id, ok: true, value: this.sim.sensor(name, robot) })
       } catch (error) {
         replyError(error)
       }
       return
     }
 
-    const promise = kind === 'tick' ? this.sim.tick() : this.sim.command(name, args)
+    let promise: Promise<void>
+    if (kind === 'tick') promise = this.sim.tick()
+    else if (kind === 'idle') promise = this.sim.idle(robot ?? null)
+    else if (wait === false) {
+      // Answered once the robot starts it. If it fails later - blocked, say - the run ends there,
+      // as it would have if the program had waited.
+      const { started, finished } = this.sim.startCommand(name, args, robot)
+      let began = false
+      started.then(() => (began = true), () => undefined)
+      finished.catch((error: unknown) => {
+        // A command that failed as it started is reported at its call, through `started`.
+        if (began && !this.ended) this.end('runtime_error', { message: error instanceof Error ? error.message : String(error), blockId: this.lastBlockId })
+      })
+      promise = started
+    } else promise = this.sim.command(name, args, robot)
     // Commands that finish instantly (stop, setWheels, drive without a duration) leave nothing
     // waiting on time; the program keeps computing, and its compute clock keeps running. When a
     // wait does end, `advance` switches back to computing at that exact step.
@@ -216,6 +239,13 @@ export class RunController {
         else replyError(String(error))
       },
     )
+  }
+
+  /** The robots stop when the program ends, once anything it started has finished. */
+  private haltAfterProgram(): void {
+    if (this.haltedAfterProgram) return
+    this.haltedAfterProgram = true
+    this.sim.halt()
   }
 
   private endAfterProgram(): void {

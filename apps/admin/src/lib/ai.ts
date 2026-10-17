@@ -49,6 +49,14 @@ export const AI_FEATURES: AIPlanFeature[] = [
     useNoun: ['assistant question', 'assistant questions'],
     defaultTokensPerUse: 8_000,
   },
+  {
+    feature: 'CommunityModeration',
+    label: 'Community moderation',
+    key: 'ai_community_moderation',
+    enhancedKey: 'ai_community_moderation_enhanced',
+    useNoun: ['post screened', 'posts screened'],
+    defaultTokensPerUse: 900,
+  },
 ]
 
 export const AI_BASIC_TOKENS_KEY = 'max_ai_basic_tokens_per_month'

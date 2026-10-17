@@ -21,6 +21,8 @@ const progress = ref<PathProgress | null>(null)
 
 const enrollState = ref<'idle' | 'enrolling' | 'enrolled' | 'error'>('idle')
 const enrollError = ref('')
+// Paid steps left out when the path was started; each one's page offers to buy it.
+const requiresPurchase = ref<string[]>([])
 const pathEnrolmentId = ref<string | null>(null)
 
 const unenrollState = ref<'idle' | 'unenrolling' | 'error'>('idle')
@@ -118,6 +120,7 @@ async function enroll() {
     const result = await startLearningPath(path.value.id)
     enrollState.value = 'enrolled'
     pathEnrolmentId.value = result.pathEnrolmentId
+    requiresPurchase.value = result.requiresPurchase ?? []
     await loadProgress(path.value.id)
   } catch (err) {
     if (err instanceof ApiError && err.status === 409) {
@@ -255,6 +258,10 @@ watch(() => route.params.id, load, { immediate: true })
             </RaButton>
             <p v-if="enrollState === 'error'" class="mt-2 mb-0 text-xs text-(--danger)">{{ enrollError }}</p>
             <p v-if="unenrollState === 'error'" class="mt-2 mb-0 text-xs text-(--danger)">{{ unenrollError }}</p>
+            <p v-if="requiresPurchase.length" class="mt-2 mb-0 text-xs text-(--fg-3)">
+              {{ requiresPurchase.length === 1 ? 'One course' : `${requiresPurchase.length} courses` }} on this path
+              {{ requiresPurchase.length === 1 ? 'needs' : 'need' }} to be bought first. Open {{ requiresPurchase.length === 1 ? 'it' : 'them' }} from the steps below.
+            </p>
           </div>
         </aside>
 
@@ -285,7 +292,8 @@ watch(() => route.params.id, load, { immediate: true })
           >
             <span class="flex size-7 shrink-0 items-center justify-center rounded-full bg-(--bg-3) text-xs font-semibold text-(--fg-2)">{{ step.order }}</span>
             <span class="flex-1 text-sm font-semibold text-(--fg-1)">{{ step.courseTitle }}</span>
-            <RaChip :tone="stepChipTone[stepStatus(step.courseId)]" class="shrink-0">{{ stepStatus(step.courseId) }}</RaChip>
+            <RaChip v-if="requiresPurchase.includes(step.courseId)" tone="info" class="shrink-0">Buy to continue</RaChip>
+            <RaChip v-else :tone="stepChipTone[stepStatus(step.courseId)]" class="shrink-0">{{ stepStatus(step.courseId) }}</RaChip>
             <ArrowRight :size="14" class="shrink-0 text-(--fg-4)" />
           </button>
         </div>

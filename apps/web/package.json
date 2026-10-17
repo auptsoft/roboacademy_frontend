@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
+    "@microsoft/signalr": "^8.0.7",
     "@roboacademy/sim": "*",
     "@roboacademy/ui": "*",
     "@tailwindcss/vite": "^4.2.4",

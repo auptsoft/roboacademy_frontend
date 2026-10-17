@@ -177,7 +177,7 @@ const rowClass = 'grid grid-cols-[1.4fr_1.4fr_1fr_1fr_110px_48px] items-center g
         <div><RaChip :tone="slot.status === 'InUse' ? 'info' : 'neutral'">{{ slot.status === 'InUse' ? 'In use' : slot.status }}</RaChip></div>
         <div class="flex justify-end">
           <DropdownMenu v-if="slot.status !== 'Cancelled'">
-            <DropdownMenuTrigger class="inline-flex size-9 items-center justify-center rounded-none border border-transparent bg-transparent text-(--fg-3) outline-none hover:bg-muted">
+            <DropdownMenuTrigger class="inline-flex size-9 items-center justify-center rounded-lg border border-transparent bg-transparent text-(--fg-3) outline-none hover:bg-muted">
               <MoreVertical :size="16" /><span class="sr-only">Open actions</span>
             </DropdownMenuTrigger>
             <DropdownMenuContent>

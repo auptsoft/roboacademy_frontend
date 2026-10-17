@@ -23,6 +23,7 @@ import ast
 import builtins
 import inspect
 import json
+import types
 
 
 class ProgramError(Exception):
@@ -57,16 +58,25 @@ def _can_be_async(node):
     return not (name.startswith("__") and name.endswith("__")) and not node.decorator_list and not _contains_yield(node)
 
 
+def _root_name(node):
+    while isinstance(node, ast.Attribute):
+        node = node.value
+    return node.id if isinstance(node, ast.Name) else None
+
+
 def _robot_calls(node):
-    # Names of the learner's functions called in this function, and whether it calls the robot.
+    # Names of the learner's functions called in this function, and whether it calls a robot:
+    # robot.move(), robot.start.move(), robots.rover.move(), wait_for_all().
     names, robot = set(), False
     for child in ast.walk(node):
         if not isinstance(child, ast.Call):
             continue
         func = child.func
-        if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name) and func.value.id == "robot":
+        if isinstance(func, ast.Attribute) and _root_name(func) in ("robot", "robots"):
             robot = True
         elif isinstance(func, ast.Name):
+            if func.id == "wait_for_all":
+                robot = True
             names.add(func.id)
         elif isinstance(func, ast.Attribute):
             names.add(func.attr)
@@ -165,42 +175,79 @@ class _Instrument(ast.NodeTransformer):
         return node
 
 
-class _Robot:
-    """The robot, in the same units as the blocks: centimetres, seconds and % speed."""
+_PEN_COLORS = json.loads(_sim_pen_colors)
+
+
+class _RobotBase:
+    """One robot, by id. start gives its commands without waiting for them to finish."""
+
+    def __init__(self, robot_id, wait=True):
+        self._id = robot_id
+        self._wait = wait
+
+    @property
+    def start(self):
+        return type(self)(self._id, False)
+
+    async def _command(self, name, args=None):
+        await _sim_host("command", name, json.dumps(args or {}), self._id, self._wait)
+
+    async def _sensor(self, name):
+        return await _sim_host("sensor", name, "{}", self._id, True)
+
+    async def _cm(self, sensor):
+        return round(await self._sensor(sensor) * 100, 1)
+
+    async def stop(self):
+        await self._command("stop")
+
+    async def wait(self, seconds):
+        # Waiting is the program's own; there's nothing to start.
+        await _sim_host("command", "wait", json.dumps({"ms": seconds * 1000}), self._id, True)
+
+    async def wait_until_done(self):
+        await _sim_host("idle", "", "{}", self._id, True)
+
+    async def pen_down(self):
+        await self._command("penDown")
+
+    async def pen_up(self):
+        await self._command("penUp")
+
+    async def pen_color(self, color):
+        name = str(color).lower()
+        if name not in _PEN_COLORS:
+            raise ValueError(f"There is no pen colour '{color}'. Try {', '.join(_PEN_COLORS)}.")
+        await self._command("penColor", {"color": _PEN_COLORS.index(name)})
+
+
+class _WheeledRobot(_RobotBase):
+    """A wheeled robot, in the same units as the blocks: centimetres, seconds and % speed."""
 
     async def move(self, distance, speed=50):
-        await _sim_host("command", "move", json.dumps({"distanceCm": distance, "speed": speed}))
+        await self._command("move", {"distanceCm": distance, "speed": speed})
 
     async def turn_left(self, degrees, speed=50):
-        await _sim_host("command", "turn", json.dumps({"degrees": degrees, "speed": speed}))
+        await self._command("turn", {"degrees": degrees, "speed": speed})
 
     async def turn_right(self, degrees, speed=50):
-        await _sim_host("command", "turn", json.dumps({"degrees": -degrees, "speed": speed}))
+        await self._command("turn", {"degrees": -degrees, "speed": speed})
 
     async def drive(self, speed=50, seconds=None):
         duration = 0 if seconds is None else seconds * 1000
-        await _sim_host("command", "drive", json.dumps({"speed": speed, "durationMs": duration}))
+        await self._command("drive", {"speed": speed, "durationMs": duration})
 
     async def set_wheels(self, left, right):
-        await _sim_host("command", "setWheels", json.dumps({"left": left, "right": right}))
-
-    async def stop(self):
-        await _sim_host("command", "stop", "{}")
-
-    async def wait(self, seconds):
-        await _sim_host("command", "wait", json.dumps({"ms": seconds * 1000}))
-
-    async def _cm(self, sensor):
-        return round(await _sim_host("sensor", sensor, "{}") * 100, 1)
+        await self._command("setWheels", {"left": left, "right": right})
 
     async def front_distance(self):
         return await self._cm("distance_front")
 
     async def line_left(self):
-        return bool(await _sim_host("sensor", "line_left", "{}"))
+        return bool(await self._sensor("line_left"))
 
     async def line_right(self):
-        return bool(await _sim_host("sensor", "line_right", "{}"))
+        return bool(await self._sensor("line_right"))
 
     async def x(self):
         return await self._cm("pos_x")
@@ -209,17 +256,73 @@ class _Robot:
         return await self._cm("pos_z")
 
     async def heading(self):
-        return await _sim_host("sensor", "heading", "{}")
+        return await self._sensor("heading")
 
 
-robot = _Robot()
+class _ArmRobot(_RobotBase):
+    """The robot arm, in the same units as the blocks: centimetres, degrees, seconds and % speed."""
+
+    async def set_base(self, degrees, speed=50):
+        await self._command("setBase", {"degrees": degrees, "speed": speed})
+
+    async def set_shoulder(self, degrees, speed=50):
+        await self._command("setShoulder", {"degrees": degrees, "speed": speed})
+
+    async def set_elbow(self, degrees, speed=50):
+        await self._command("setElbow", {"degrees": degrees, "speed": speed})
+
+    async def set_wrist(self, degrees, speed=50):
+        await self._command("setWrist", {"degrees": degrees, "speed": speed})
+
+    async def reach(self, distance, height, speed=50):
+        await self._command("reach", {"distanceCm": distance, "heightCm": height, "speed": speed})
+
+    async def open_gripper(self):
+        await self._command("openGripper")
+
+    async def close_gripper(self):
+        await self._command("closeGripper")
+
+    async def base_angle(self):
+        return await self._sensor("base_angle")
+
+    async def shoulder_angle(self):
+        return await self._sensor("shoulder_angle")
+
+    async def elbow_angle(self):
+        return await self._sensor("elbow_angle")
+
+    async def wrist_angle(self):
+        return await self._sensor("wrist_angle")
+
+    async def holding(self):
+        return bool(await self._sensor("holding"))
+
+    async def gripper_distance(self):
+        return await self._cm("gripper_distance")
+
+    async def gripper_x(self):
+        return await self._cm("gripper_x")
+
+    async def gripper_z(self):
+        return await self._cm("gripper_z")
+
+    async def gripper_height(self):
+        return await self._cm("gripper_height")
+
+
+async def _wait_for_all():
+    await _sim_host("idle", "", "{}", None, True)
+
+
+_ROBOTS = {"wheeled": _WheeledRobot, "arm": _ArmRobot}
 
 
 def _print(*values, sep=" ", end="\n", **_):
     _sim_print(sep.join(str(value) for value in values))
 
 
-async def run_program(source):
+async def run_program(source, robots_json):
     try:
         tree = ast.parse(source, "<program>")
     except SyntaxError as error:
@@ -231,12 +334,15 @@ async def run_program(source):
     except SyntaxError as error:
         raise ProgramError(f"Line {error.lineno}: {error.msg}", error.lineno) from None
 
+    robots = {r["id"]: _ROBOTS.get(r["api"], _WheeledRobot)(r["id"]) for r in json.loads(robots_json)}
     program_builtins = dict(vars(builtins))
     program_builtins["print"] = _print
     scope = {
         "__name__": "__main__",
         "__builtins__": program_builtins,
-        "robot": robot,
+        "robot": next(iter(robots.values())),
+        "robots": types.SimpleNamespace(**robots),
+        "wait_for_all": _wait_for_all,
         "_sim_maybe": _sim_maybe,
         "_sim_line": _sim_line,
         "_sim_tick": _sim_tick,

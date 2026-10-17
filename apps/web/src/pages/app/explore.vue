@@ -161,7 +161,7 @@ watch([activeTab, search], () => { fetchPage(true) }, { immediate: true })
 
         <!-- Results: courses -->
         <template v-else-if="activeTab === 'courses'">
-          <div v-if="filteredCourses.length" class="grid gap-x-6 gap-y-9 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div v-if="filteredCourses.length" class="grid gap-x-6 gap-y-9 max-sm:gap-y-0 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             <CourseCatalogCard v-for="course in filteredCourses" :key="course.id" v-bind="course" />
           </div>
           <div v-else class="flex flex-col items-center gap-3 py-16 text-center">
@@ -173,7 +173,7 @@ watch([activeTab, search], () => { fetchPage(true) }, { immediate: true })
 
         <!-- Results: learning paths -->
         <template v-else>
-          <div v-if="pathItems.length" class="grid gap-x-6 gap-y-9 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div v-if="pathItems.length" class="grid gap-x-6 gap-y-9 max-sm:gap-y-0 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             <PathCatalogCard v-for="path in pathItems" :key="path.id" v-bind="path" />
           </div>
           <div v-else class="flex flex-col items-center gap-3 py-16 text-center">
