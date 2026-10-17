@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { inject } from 'vue'
 import { useRouter } from 'vue-router'
-import { User, BarChart3, Award, Settings, LogOut, ChevronDown, HelpCircle, Trophy } from 'lucide-vue-next'
+import { User, BarChart3, Award, Settings, LogOut, HelpCircle, Trophy } from 'lucide-vue-next'
 import {
   DropdownMenuRoot,
   DropdownMenuTrigger,
