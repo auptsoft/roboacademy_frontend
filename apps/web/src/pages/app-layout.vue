@@ -5,12 +5,14 @@ import AppBottomNav from '@/components/layout/AppBottomNav.vue'
 import AssistantLauncher from '@/components/assistant/AssistantLauncher.vue'
 import TermsGate from '@/components/legal/TermsGate.vue'
 import { RaCelebration } from '@roboacademy/ui'
+import AchievementToasts from '@/components/gamification/AchievementToasts.vue'
+import { useAchievements } from '@/composables/useAchievements'
 import { onMounted, provide } from 'vue'
 
 import { getTenantId } from '@/api/client'
 import { ref } from 'vue'
 import { getTenantBranding, type TenantBranding } from '@/api/tenancy'
-import { applyTenantBranding, brandingKey } from '@/branding'
+import { applyTenantBranding, brandingKey, featureConfirmed } from '@/branding'
 
 const branding = ref<TenantBranding>({
       name: 'RoboAcademy',
@@ -33,6 +35,7 @@ onMounted(async () => {
   }
 
   applyTenantBranding(branding.value)
+  useAchievements().setEnabled(featureConfirmed(branding.value, 'gamification'))
 })
 
 </script>
@@ -58,5 +61,6 @@ onMounted(async () => {
     <AssistantLauncher />
     <TermsGate />
     <RaCelebration />
+    <AchievementToasts />
   </div>
 </template>

@@ -1,4 +1,5 @@
 import type { Vec2, Vec3, ZoneDef } from '../scene/types'
+import { DrawingCache } from './drawing'
 import {
   DEFAULT_ROBOT_ID,
   type GradingResult,
@@ -37,6 +38,7 @@ export class ObjectiveTracker {
   private readonly tracked: TrackedObjective[]
   private readonly zones: Map<string, ZoneDef>
   private readonly set: ObjectiveSet
+  private readonly drawings = new DrawingCache()
 
   constructor(set: ObjectiveSet, zones: ZoneDef[] = []) {
     this.set = set
@@ -113,6 +115,8 @@ export class ObjectiveTracker {
         const angle = world.joints.get(predicate.robotId ?? DEFAULT_ROBOT_ID)?.[predicate.joint]
         return typeof angle === 'number' && Math.abs(angle - predicate.value) <= predicate.toleranceDeg
       }
+      case 'inkMatches':
+        return this.drawings.matches(predicate, world)
       case 'all':
         return predicate.of.every((child, index) => this.evaluate(child, world, entry, `${path}.${index}`))
       case 'any':

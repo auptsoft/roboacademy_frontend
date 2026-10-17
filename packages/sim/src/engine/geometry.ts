@@ -1,4 +1,4 @@
-import type { Vec2 } from '../scene/types'
+import type { Vec2, Vec3 } from '../scene/types'
 
 export const DEG_TO_RAD = Math.PI / 180
 export const RAD_TO_DEG = 180 / Math.PI
@@ -46,4 +46,36 @@ export function distanceToPolyline(point: Vec2, points: Vec2[]): number {
     best = Math.min(best, Math.hypot(dx, dz))
   }
   return best
+}
+
+export interface Quaternion {
+  x: number
+  y: number
+  z: number
+  w: number
+}
+
+/** Quaternion for a rotation about Z: in a robot's own frame, positive tips its +X axis upwards. */
+export function pitchQuaternion(angle: number): Quaternion {
+  return { x: 0, y: 0, z: Math.sin(angle / 2), w: Math.cos(angle / 2) }
+}
+
+/** `a` then `b` in the rotated frame: the rotation of a child `b` attached to a parent `a`. */
+export function multiplyQuaternions(a: Quaternion, b: Quaternion): Quaternion {
+  return {
+    x: a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+    y: a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+    z: a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+    w: a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
+  }
+}
+
+/** The inverse of a unit quaternion. */
+export function conjugateQuaternion(q: Quaternion): Quaternion {
+  return { x: -q.x, y: -q.y, z: -q.z, w: q.w }
+}
+
+export function rotateVector(q: Quaternion, v: Vec3): Vec3 {
+  const r = multiplyQuaternions(multiplyQuaternions(q, { x: v.x, y: v.y, z: v.z, w: 0 }), conjugateQuaternion(q))
+  return { x: r.x, y: r.y, z: r.z }
 }

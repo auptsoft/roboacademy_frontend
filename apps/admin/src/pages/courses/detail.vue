@@ -20,7 +20,8 @@ import { hasTenantFeature } from '@/branding'
 import CourseModuleHeader, { type CourseModuleEditForm } from '@/components/CourseModuleHeader.vue'
 import CourseItemRow from '@/components/CourseItemRow.vue'
 import LessonFormFields, { type LessonFormState } from '@/components/LessonFormFields.vue'
-import AssessmentFormFields, { type AssessmentFormState, type QuestionRow } from '@/components/AssessmentFormFields.vue'
+import AssessmentFormFields, { type AssessmentFormState } from '@/components/AssessmentFormFields.vue'
+import { newQuestionRow as emptyQuestionRow, rowToQuestionInput, type QuestionRow } from '@/components/questions/question-rows'
 import { ApiError } from '@/api/client'
 import {
   getCourse,
@@ -61,6 +62,7 @@ import {
   type QuestionBankItemSummary,
   type CreateAssessmentRequest,
 } from '@/api/assessment'
+import { provideAssessmentAssets } from '@/components/questions/assessment-assets'
 
 const route = useRoute()
 const router = useRouter()
@@ -826,15 +828,18 @@ async function loadQuestionBank() {
 }
 
 function newQuestionRow(): QuestionRow {
-  return { source: 'inline', bankItemId: '', text: '', options: ['', ''], correctOptionIndex: 0 }
+  return emptyQuestionRow()
 }
+
+// Diagrams in new quiz questions upload to the assessment store.
+provideAssessmentAssets()
 
 const addAssessmentModuleId = ref<string | null>(null)
 const assessmentCreating = ref(false)
 const assessmentErrors = ref<Record<string, string[]>>({})
 const assessmentForm = ref<AssessmentFormState>({
   type: 'Quiz', title: '', isRequired: true, allowUnenrolled: false, order: 1,
-  maxAttempts: '', timeLimitMinutes: '', passMark: 50, prompt: '',
+  maxAttempts: '', timeLimitMinutes: '', questionDisplay: 'AllOnOnePage', allowBackNavigation: true, passMark: 50, prompt: '',
   acceptedContentTypes: '', maxFileSizeBytes: '',
   questions: [newQuestionRow()],
 })
@@ -843,7 +848,7 @@ function openAddAssessment(mod: CourseModuleItem) {
   addAssessmentModuleId.value = mod.id
   assessmentForm.value = {
     type: 'Quiz', title: '', isRequired: true, allowUnenrolled: false, order: orderedItems(mod).length + 1,
-    maxAttempts: '', timeLimitMinutes: '', passMark: 50, prompt: '',
+    maxAttempts: '', timeLimitMinutes: '', questionDisplay: 'AllOnOnePage', allowBackNavigation: true, passMark: 50, prompt: '',
     acceptedContentTypes: '', maxFileSizeBytes: '',
     questions: [newQuestionRow()],
   }
@@ -867,11 +872,9 @@ async function submitAddAssessment() {
 
     if (assessmentForm.value.type === 'Quiz') {
       request.passMark = Number(assessmentForm.value.passMark)
-      request.questions = assessmentForm.value.questions.map((row) =>
-        row.source === 'bank'
-          ? { bankItemId: row.bankItemId }
-          : { text: row.text, options: row.options, correctOptionIndex: row.correctOptionIndex },
-      )
+      request.questions = assessmentForm.value.questions.map(rowToQuestionInput)
+      request.questionDisplay = assessmentForm.value.questionDisplay
+      request.allowBackNavigation = assessmentForm.value.allowBackNavigation
     } else if (assessmentForm.value.type === 'Written') {
       request.prompt = assessmentForm.value.prompt
     } else {

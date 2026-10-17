@@ -12,6 +12,8 @@ import { ROBOT_JS_API, type ApiEntry } from '../languages/javascript/api'
 import { ROBOT_PY_API } from '../languages/python/api'
 import { ROBOT_LUA_API } from '../languages/lua/api'
 import type { ProgramLanguage } from '../languages/types'
+import type { RobotApi } from '../robots/types'
+import type { PreludeRobot } from '../languages/javascript/api'
 
 /**
  * The text editor for JavaScript, Python and Lua programs: CodeMirror with autocomplete for
@@ -21,6 +23,8 @@ const props = defineProps<{
   /** Read once on mount; later edits flow out through `change`. */
   source: string
   language: Exclude<ProgramLanguage, 'blocks'>
+  /** The scene's robots, the main one first, for autocomplete. Defaults to one wheeled robot. */
+  robots?: PreludeRobot[]
   readonly?: boolean
   /** The line running now, 1-based. */
   runningLine?: number | null
@@ -60,18 +64,33 @@ const lineMarks = StateField.define<DecorationSet>({
   provide: (field) => EditorView.decorations.from(field),
 })
 
-/** `robot.` completions, with signatures and descriptions. */
-const robotCompletions = (api: ApiEntry[]) => (context: CompletionContext): CompletionResult | null => {
-  const word = context.matchBefore(/robot\.\w*/)
+/**
+ * Completions after `robot.`, `robots.<id>.` and their `.start.` (commands only), and robot names
+ * after `robots.`, with signatures and descriptions.
+ */
+const robotCompletions = (apis: Record<RobotApi, ApiEntry[]>) => (context: CompletionContext): CompletionResult | null => {
+  const robots = props.robots?.length ? props.robots : [{ id: 'robot', api: 'wheeled' as const }]
+  const word = context.matchBefore(/\brobots?(?:\.\w+)*\.\w*/)
   if (!word) return null
+  const parts = word.text.split('.')
+  const typed = parts.pop()!
+  const from = word.to - typed.length
+  if (parts.length === 1 && parts[0] === 'robots') {
+    return { from, options: robots.map((robot) => ({ label: robot.id, detail: robot.api === 'arm' ? 'robot arm' : 'wheeled robot', type: 'variable' })) }
+  }
+  const [root, ...path] = parts
+  const id = root === 'robot' ? robots[0]!.id : path.shift()
+  const robot = robots.find((r) => r.id === id)
+  if (!robot || path.length > 1 || (path.length === 1 && path[0] !== 'start')) return null
+  const entries = path[0] === 'start' ? apis[robot.api].filter((entry) => entry.startable) : apis[robot.api]
   return {
-    from: word.from + 'robot.'.length,
-    options: api.map((entry) => ({
+    from,
+    options: entries.map((entry) => ({
       label: entry.name,
       detail: entry.signature.slice(entry.name.length),
       info: entry.info,
       apply: entry.apply,
-      type: 'method',
+      type: entry.name === 'start' ? 'property' : 'method',
     })),
   }
 }

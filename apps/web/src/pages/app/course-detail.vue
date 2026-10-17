@@ -1,18 +1,26 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, inject, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { RaChip, RaProgress, RaCard, RaButton, RaInteractiveLesson, parseInteractiveContent, celebrate } from '@roboacademy/ui'
+import {
+  RaChip, RaProgress, RaCard, RaButton, RaInteractiveLesson,
+  celebrate, isQuizResponseComplete, parseInteractiveContent, type QuizResponse,
+} from '@roboacademy/ui'
 import {
   CheckCircle2, PlayCircle, Lock, ChevronLeft, ChevronRight, ChevronDown, Layers, List,
   Loader2, AlertTriangle, Compass, ArrowRight, ExternalLink, CloudOff,
   Video, BookOpen, Puzzle, Cpu, FileText,
-  ClipboardCheck, PenLine, UploadCloud, Paperclip, Sparkles, PanelLeftClose,
+  ClipboardCheck, PenLine, UploadCloud, Paperclip, Sparkles, PanelLeftClose, MessagesSquare,
 } from 'lucide-vue-next'
 import { ApiError } from '@/api/client'
 import { getCourse, getCourseResumePoint, recordLessonProgress, getLessonPlaybackUrl, combinedProgressPercent, type CourseDetail, type CourseLessonDetail, type CourseResumePoint } from '@/api/learning'
 import TutorPanel from '@/components/tutor/TutorPanel.vue'
+import CourseQAPanel from '@/components/community/CourseQAPanel.vue'
+import { brandingKey, featureConfirmed } from '@/branding'
 import { useAIAvailability } from '@/composables/useAIAvailability'
 import { useLessonAnswers } from '@/composables/useLessonAnswers'
+import { useAttemptDraft } from '@/composables/useAttemptDraft'
+import AttemptTimer from '@/components/assessment/AttemptTimer.vue'
+import QuizForm from '@/components/assessment/QuizForm.vue'
 import { useLessonAssets } from '@/composables/useLessonAssets'
 // Tiny: each player inside loads only when a lesson has that block.
 import { lessonBlockRenderers } from '@roboacademy/sim/lesson'
@@ -21,12 +29,14 @@ import { kvGet, kvSet } from '@/lib/offline-store'
 import { getCurrentUser } from '@/store/auth'
 import { renderRichText } from '@/lib/rich-text'
 import {
-  listModuleAssessments, getAssessment, listMyAttempts, startAttempt, submitAttempt, getAttemptFileUploadUrl,
+  listModuleAssessments, getAssessment, listMyAttempts, startAttempt, submitAttempt, getAttemptFileUploadUrl, saveAttemptDraft,
   type AssessmentSummary, type AssessmentDetail, type AttemptSummary,
 } from '@/api/assessment'
+import { useAchievements } from '@/composables/useAchievements'
 
 const route = useRoute()
 const router = useRouter()
+const { checkSoon: checkAchievementsSoon } = useAchievements()
 const showCurriculum = ref(false)
 
 // Desktop-only: lets learners hide the curriculum to give the lesson full width. Mobile uses the
@@ -220,6 +230,10 @@ function fullyComplete(r: CourseResumePoint) {
 
 watch(resume, (next, prev) => {
   if (!next || !prev || next.courseId !== prev.courseId) return
+  // Progress earns XP and badges, worked out in the background: look for any shortly.
+  if (next.completedLessons > prev.completedLessons || next.completedAssessments > prev.completedAssessments) {
+    checkAchievementsSoon()
+  }
   if (fullyComplete(next) && !fullyComplete(prev)) {
     celebrate({ size: 'grand', title: 'Course complete!', subtitle: course.value ? `You finished ${course.value.title}.` : undefined })
   }
@@ -388,6 +402,8 @@ const isSimulationLesson = computed(() => lessonType.value === 'simulation')
 const interactiveContent = computed(() =>
   lessonType.value === 'interactive' ? parseInteractiveContent(selectedFlat.value?.lesson.content) : null)
 const interactiveComplete = ref(false)
+// Cards lessons end on a finish card, which carries the Mark Complete button instead of the page.
+const interactiveCards = computed(() => interactiveContent.value?.display === 'cards')
 
 // The lesson reports its state as soon as it mounts, already complete when saved answers finish it.
 // Only a change after that first report is the learner finishing the checks now.
@@ -432,6 +448,13 @@ const aiAvailability = useAIAvailability()
 const tutorOpen = ref(false)
 const showTutorButton = computed(() =>
   aiAvailability.tutorAvailable.value && contentKind.value === 'lesson' && !!selectedFlat.value && !isSimulationLesson.value)
+
+// ── Community Q&A ────────────────────────────────────────────────────────────
+// Questions about the open lesson, when the school's plan includes course Q&A.
+const branding = inject(brandingKey, null)
+const qaOpen = ref(false)
+const showQAButton = computed(() =>
+  featureConfirmed(branding?.value, 'community_qa') && contentKind.value === 'lesson' && !!selectedFlat.value)
 
 /**
  * The backend records progress for a passing graded run just after scoring it (the event goes
@@ -540,25 +563,82 @@ const attemptsRemaining = computed(() => {
   return Math.max(0, max - myAttempts.value.length)
 })
 const canStartAttempt = computed(() => attemptsRemaining.value === null || attemptsRemaining.value > 0)
+// Live while in progress and in time. The countdown (AttemptTimer) sets timeUp at zero; on load,
+// the server's clock judges an attempt whose time already ran out.
 const attemptIsLive = computed(() => {
   const attempt = currentAttempt.value
-  if (!attempt || attempt.status !== 'InProgress') return false
-  return !attempt.expiresAt || new Date(attempt.expiresAt).getTime() > Date.now()
+  if (!attempt || attempt.status !== 'InProgress' || timeUp.value) return false
+  if (!attempt.expiresAt) return true
+  const serverOffset = Date.parse(attempt.serverNow) - attemptsLoadedAt.value
+  return Date.parse(attempt.expiresAt) > Date.now() + serverOffset
 })
+// When the attempts were fetched, to turn their serverNow into a clock offset.
+const attemptsLoadedAt = ref(Date.now())
 
-const quizAnswers = ref<(number | null)[]>([])
+// One response per question: an option index for multiple choice, else what RaQuizQuestion collects.
+const quizAnswers = ref<QuizResponse[]>([])
 const writtenResponse = ref('')
 const selectedFile = ref<File | null>(null)
 const fileInputEl = ref<HTMLInputElement | null>(null)
+// File submissions upload as soon as a file is picked, so a time-up can still hand the file in.
+const uploadedFileKey = ref<string | null>(null)
+// One-at-a-time quizzes: the question on screen (questions.length is the review screen), and the furthest reached.
+const currentQuestion = ref(0)
+const furthestQuestion = ref(0)
+// The countdown reached zero: the form locks and whatever is answered is handed in.
+const timeUp = ref(false)
+const timeUpError = ref('')
 
 function resetAnswerState() {
   quizAnswers.value = assessmentDetail.value ? assessmentDetail.value.questions.map(() => null) : []
   writtenResponse.value = ''
   selectedFile.value = null
+  uploadedFileKey.value = null
+  currentQuestion.value = 0
+  furthestQuestion.value = 0
+  timeUp.value = false
+  timeUpError.value = ''
+}
+
+/** Brings back what was saved on an attempt still in progress (after a reload, or on another device). */
+function restoreDraft(attempt: AttemptSummary | null) {
+  if (!attempt || attempt.status !== 'InProgress' || !assessmentDetail.value) return
+  const draft = attempt.draft
+  const count = assessmentDetail.value.questions.length
+  if (draft?.responses) quizAnswers.value = Array.from({ length: count }, (_, i) => draft.responses![i] ?? null)
+  if (draft?.responseText) writtenResponse.value = draft.responseText
+  if (draft?.fileReference) uploadedFileKey.value = draft.fileReference
+  currentQuestion.value = Math.min(attempt.currentQuestion ?? 0, count)
+  furthestQuestion.value = Math.min(attempt.furthestQuestion ?? 0, count)
+}
+
+// Saves the answers as the learner works (see useAttemptDraft).
+const attemptDraft = useAttemptDraft(async ({ keepalive }) => {
+  const attempt = currentAttempt.value
+  const detail = assessmentDetail.value
+  if (!attempt || attempt.status !== 'InProgress' || !detail) return
+  const draft = detail.type === 'Quiz' ? { responses: quizAnswers.value }
+    : detail.type === 'Written' ? { responseText: writtenResponse.value }
+    : { fileReference: uploadedFileKey.value ?? undefined }
+  const position = detail.type === 'Quiz' && detail.questionDisplay === 'OneAtATime'
+    ? { currentQuestion: currentQuestion.value, furthestQuestion: furthestQuestion.value }
+    : {}
+  await saveAttemptDraft(attempt.id, { draft, ...position }, { keepalive })
+})
+
+watch([quizAnswers, writtenResponse, uploadedFileKey], () => {
+  if (attemptIsLive.value) attemptDraft.schedule()
+}, { deep: true })
+
+/** Moving between questions saves straight away: the position is what locks earlier answers. */
+function onQuizNavigate() {
+  attemptDraft.schedule()
+  void attemptDraft.flush()
 }
 
 async function refreshMyAttempts(assessmentId: string) {
   myAttempts.value = await listMyAttempts(assessmentId)
+  attemptsLoadedAt.value = Date.now()
 }
 
 async function loadAssessmentDetail(assessmentId: string) {
@@ -577,7 +657,9 @@ async function loadAssessmentDetail(assessmentId: string) {
     ])
     assessmentDetail.value = detail
     myAttempts.value = attempts
+    attemptsLoadedAt.value = Date.now()
     resetAnswerState()
+    restoreDraft(attempts[0] ?? null)
     assessmentDetailState.value = 'loaded'
 
     // Quizzes are celebrated on submit; written and file work is graded later by a teacher.
@@ -612,6 +694,8 @@ async function startAttemptFlow() {
     await startAttempt(assessmentId)
     await refreshMyAttempts(assessmentId)
     resetAnswerState()
+    // Starting again on an attempt still in time resumes it, answers and all.
+    restoreDraft(currentAttempt.value)
     startState.value = 'idle'
   } catch (err) {
     startState.value = 'error'
@@ -627,27 +711,63 @@ function pickFile() {
   fileInputEl.value?.click()
 }
 
-function onFileSelected(event: Event) {
+// Uploaded straight away (not at submit), so the file is safe even if time runs out first.
+async function onFileSelected(event: Event) {
   const input = event.target as HTMLInputElement
-  selectedFile.value = input.files?.[0] ?? null
+  const file = input.files?.[0] ?? null
+  input.value = ''
+  if (!file || !currentAttempt.value) return
+  selectedFile.value = file
+  uploadState.value = 'uploading'
+  submitError.value = ''
+  try {
+    const { uploadUrl, objectKey } = await getAttemptFileUploadUrl(currentAttempt.value.id, file.type || 'application/octet-stream', file.name)
+    const put = await fetch(uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type || 'application/octet-stream' } })
+    if (!put.ok) throw new Error('Upload failed.')
+    uploadedFileKey.value = objectKey
+    attemptDraft.schedule()
+    await attemptDraft.flush()
+  } catch (err) {
+    selectedFile.value = null
+    submitState.value = 'error'
+    submitError.value = err instanceof ApiError ? err.message : "The file couldn't be uploaded. Check your connection and try again."
+  } finally {
+    uploadState.value = 'idle'
+  }
 }
 
-async function submitCurrentAttempt() {
+/** The countdown hit zero: lock the form, save what's there, and hand it in. */
+async function onTimeUp() {
+  timeUp.value = true
+  await attemptDraft.flush(true)
+  await submitCurrentAttempt({ timeUp: true })
+}
+
+async function submitCurrentAttempt(options: { timeUp?: boolean } = {}) {
   if (!currentAttempt.value || !assessmentDetail.value || !selectedAssessmentContext.value) return
 
-  if (assessmentDetail.value.type === 'Quiz' && quizAnswers.value.some(a => a === null)) {
-    submitState.value = 'error'
-    submitError.value = 'Answer every question before submitting.'
-    return
-  }
-  if (assessmentDetail.value.type === 'Written' && !writtenResponse.value.trim()) {
-    submitState.value = 'error'
-    submitError.value = 'Write a response before submitting.'
-    return
-  }
-  if (assessmentDetail.value.type === 'FileSubmission' && !selectedFile.value) {
-    submitState.value = 'error'
-    submitError.value = 'Select a file before submitting.'
+  // When time's up, whatever is there is handed in - unanswered questions just score nothing.
+  const questions = assessmentDetail.value.questions
+  if (!options.timeUp) {
+    if (assessmentDetail.value.type === 'Quiz'
+      && questions.some((q, i) => !isQuizResponseComplete(q.kind ?? 'choice', q.definition, quizAnswers.value[i] ?? null))) {
+      submitState.value = 'error'
+      submitError.value = 'Answer every question before submitting.'
+      return
+    }
+    if (assessmentDetail.value.type === 'Written' && !writtenResponse.value.trim()) {
+      submitState.value = 'error'
+      submitError.value = 'Write a response before submitting.'
+      return
+    }
+    if (assessmentDetail.value.type === 'FileSubmission' && !uploadedFileKey.value) {
+      submitState.value = 'error'
+      submitError.value = 'Choose a file before submitting.'
+      return
+    }
+  } else if (assessmentDetail.value.type === 'FileSubmission' && !uploadedFileKey.value) {
+    // Nothing to hand in from here; the server closes the attempt on its own.
+    timeUpError.value = "Time's up. No file was uploaded, so this attempt will be closed without one."
     return
   }
 
@@ -658,17 +778,13 @@ async function submitCurrentAttempt() {
     const summary = selectedAssessmentContext.value.summary
     const assessmentId = summary.id
     if (assessmentDetail.value.type === 'Quiz') {
-      await submitAttempt(attemptId, { answers: quizAnswers.value as number[] })
+      await submitAttempt(attemptId, { responses: quizAnswers.value })
     } else if (assessmentDetail.value.type === 'Written') {
       await submitAttempt(attemptId, { responseText: writtenResponse.value })
     } else {
-      const file = selectedFile.value!
-      uploadState.value = 'uploading'
-      const { uploadUrl, objectKey } = await getAttemptFileUploadUrl(attemptId, file.type || 'application/octet-stream', file.name)
-      await fetch(uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type || 'application/octet-stream' } })
-      uploadState.value = 'idle'
-      await submitAttempt(attemptId, { fileReference: objectKey })
+      await submitAttempt(attemptId, { fileReference: uploadedFileKey.value! })
     }
+    attemptDraft.stop()
     await refreshMyAttempts(assessmentId)
     submitState.value = 'idle'
 
@@ -681,6 +797,12 @@ async function submitCurrentAttempt() {
     }
   } catch (err) {
     uploadState.value = 'idle'
+    if (options.timeUp) {
+      // Offline, or past the grace period: the saved answers are handed in by the server instead.
+      submitState.value = 'idle'
+      timeUpError.value = "Time's up. Your saved answers will be submitted automatically."
+      return
+    }
     submitState.value = 'error'
     submitError.value = err instanceof ApiError ? err.message : 'Unable to submit attempt.'
   }
@@ -881,6 +1003,14 @@ watch(() => route.params.id, load, { immediate: true })
           >
             <Sparkles :size="14" class="text-(--brand-blue)" /> Ask the tutor
           </button>
+          <button
+            v-if="showQAButton"
+            type="button"
+            :class="[showTutorButton ? '' : 'ml-auto', 'inline-flex cursor-pointer items-center gap-1.5 rounded-(--ra-md) border border-(--line-2) bg-(--bg-2) px-3 py-1.5 text-[13px] font-semibold text-(--fg-1) hover:border-(--brand-blue)']"
+            @click="qaOpen = true"
+          >
+            <MessagesSquare :size="14" class="text-(--brand-blue)" /> Questions
+          </button>
         </div>
 
         <h1 class="m-0 text-[32px] font-bold text-(--fg-1) tracking-[-0.01em]">{{ String(selectedFlat.index + 1).padStart(2, '0') }}. {{ selectedFlat.lesson.title }}</h1>
@@ -900,7 +1030,21 @@ watch(() => route.params.id, load, { immediate: true })
             :class="selectedFlat.lesson.context && 'mt-8'"
             @progress="onInteractiveProgress"
             @answer="(blockId, result) => recordAnswer(course!.id, selectedFlat!.lesson.id, blockId, result)"
-          />
+          >
+            <template #finish>
+              <RaChip v-if="selectedState === 'done'" tone="student" class="py-2.5! px-4!">Completed</RaChip>
+              <template v-else-if="selectedState === 'active'">
+                <RaButton :disabled="completeState === 'saving' || !interactiveComplete" @click="markComplete">
+                  {{ completeState === 'saving' ? 'Saving…' : 'Mark Complete & Continue' }}
+                  <template #icon-right>
+                    <Loader2 v-if="completeState === 'saving'" :size="14" class="animate-spin" />
+                    <ArrowRight v-else :size="14" />
+                  </template>
+                </RaButton>
+                <p v-if="completeState === 'error'" class="m-0 text-xs text-(--danger)">{{ completeError }}</p>
+              </template>
+            </template>
+          </RaInteractiveLesson>
           <p v-else class="mt-8 mb-0 inline-flex items-center gap-2 text-[13px] text-(--fg-3)">
             <Loader2 :size="14" class="animate-spin" /> Loading your answers…
           </p>
@@ -964,12 +1108,12 @@ watch(() => route.params.id, load, { immediate: true })
           <p v-if="openContentState === 'error'" class="mt-2 mb-0 text-xs text-(--danger)">{{ openContentError }}</p>
         </RaCard>
 
-        <RaCard v-else-if="!selectedFlat.lesson.contentReference && !selectedFlat.lesson.context" :padding="28" class="text-center mt-6">
+        <RaCard v-else-if="!selectedFlat.lesson.contentReference && !selectedFlat.lesson.context && selectedFlat.lesson.type != 'Interactive'" :padding="28" class="text-center mt-6">
           <div class="text-sm font-semibold text-(--fg-1) mb-2">Content isn't available yet</div>
           <p class="m-0 text-[13px] text-(--fg-3) max-w-120 mx-auto">This lesson's {{ selectedFlat.lesson.type.toLowerCase() }} content will be available once delivery is set up.</p>
         </RaCard>
 
-        <div class="mt-8">
+        <div v-if="!interactiveCards" class="mt-8">
           <RaChip v-if="selectedState === 'done'" tone="student" class="py-2.5! px-4!">Completed</RaChip>
           <!--
             A simulation lesson is completed by passing it, not by self-reporting: Submit in the
@@ -1018,7 +1162,7 @@ watch(() => route.params.id, load, { immediate: true })
 
           <div class="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-(--fg-4) mb-5">
             <span v-if="assessmentDetail.maxAttempts != null">Attempts: {{ myAttempts.length }}/{{ assessmentDetail.maxAttempts }}</span>
-            <span v-if="assessmentDetail.timeLimitMinutes != null">Time limit: {{ assessmentDetail.timeLimitMinutes }} min</span>
+            <span v-if="assessmentDetail.timeLimitMinutes != null">Time allowed: {{ assessmentDetail.timeLimitMinutes }} min once you start</span>
             <span v-if="assessmentDetail.passMark != null">Pass mark: {{ assessmentDetail.passMark }}%</span>
           </div>
 
@@ -1033,6 +1177,7 @@ watch(() => route.params.id, load, { immediate: true })
               </span>
               <span v-if="currentAttempt.score != null" class="text-[13px] text-(--fg-3)">Score: {{ currentAttempt.score }}%</span>
             </div>
+            <p v-if="currentAttempt.submittedAutomatically" class="m-0 mb-2 text-[13px] text-(--fg-3)">Submitted automatically when time ran out.</p>
             <p v-if="currentAttempt.feedback" class="m-0 text-[13px] text-(--fg-2) leading-[1.6]">{{ currentAttempt.feedback }}</p>
             <RaButton v-if="canStartAttempt" variant="secondary" class="mt-4" :disabled="startState === 'starting'" @click="startAttemptFlow">
               {{ startState === 'starting' ? 'Starting…' : 'Try Again' }}
@@ -1043,23 +1188,36 @@ watch(() => route.params.id, load, { immediate: true })
           <!-- Submitted (Written/FileSubmission): awaiting a human grade -->
           <RaCard v-else-if="currentAttempt?.status === 'Submitted'" :padding="28">
             <div class="text-sm font-semibold text-(--fg-1) mb-2">Submitted — awaiting grading</div>
+            <p v-if="currentAttempt.submittedAutomatically" class="m-0 mb-2 text-[13px] text-(--fg-3)">Submitted automatically when time ran out.</p>
             <p v-if="currentAttempt.responseText" class="m-0 text-[13px] text-(--fg-2) leading-[1.6] whitespace-pre-wrap">{{ currentAttempt.responseText }}</p>
             <p v-else-if="currentAttempt.fileReference" class="m-0 text-[13px] text-(--fg-2) flex items-center gap-1.5"><Paperclip :size="13" /> File submitted</p>
           </RaCard>
 
+          <!-- Time's up on this page: locked, being handed in -->
+          <RaCard v-else-if="timeUp && currentAttempt?.status === 'InProgress'" :padding="28" class="text-center" role="status">
+            <div class="mb-2 text-sm font-semibold text-(--fg-1)">Time's up</div>
+            <p class="m-0 text-[13px] text-(--fg-3)">{{ timeUpError || 'Submitting your answers…' }}</p>
+          </RaCard>
+
           <!-- In-progress and not expired: the answer form -->
           <template v-else-if="attemptIsLive">
-            <div v-if="assessmentDetail.type === 'Quiz'" class="flex flex-col gap-5">
-              <div v-for="(q, i) in assessmentDetail.questions" :key="q.id">
-                <div class="text-sm font-semibold text-(--fg-1) mb-2">{{ i + 1 }}. {{ q.text }}</div>
-                <div class="flex flex-col gap-1.5">
-                  <label v-for="(opt, oi) in q.options" :key="oi" class="flex items-center gap-2 text-[13px] text-(--fg-2) cursor-pointer">
-                    <input type="radio" :name="'q-' + q.id" :checked="quizAnswers[i] === oi" @change="quizAnswers[i] = oi" />
-                    {{ opt }}
-                  </label>
-                </div>
-              </div>
-            </div>
+            <AttemptTimer
+              v-if="currentAttempt?.expiresAt"
+              :expires-at="currentAttempt.expiresAt"
+              :server-now="currentAttempt.serverNow"
+              @expired="onTimeUp"
+            />
+            <QuizForm
+              v-if="assessmentDetail.type === 'Quiz'"
+              v-model:answers="quizAnswers"
+              v-model:current="currentQuestion"
+              v-model:furthest="furthestQuestion"
+              :questions="assessmentDetail.questions"
+              :display="assessmentDetail.questionDisplay ?? 'AllOnOnePage'"
+              :allow-back="assessmentDetail.allowBackNavigation ?? true"
+              :disabled="submitState === 'submitting'"
+              @navigate="onQuizNavigate"
+            />
 
             <template v-else-if="assessmentDetail.type === 'Written'">
               <textarea
@@ -1076,13 +1234,19 @@ watch(() => route.params.id, load, { immediate: true })
                 <span v-if="assessmentDetail.maxFileSizeBytes"> · Max {{ Math.round(assessmentDetail.maxFileSizeBytes / 1024 / 1024) }} MB</span>
               </div>
               <input ref="fileInputEl" type="file" class="hidden" @change="onFileSelected" />
-              <RaButton variant="secondary" @click="pickFile">
-                <template #icon><Paperclip :size="14" /></template>
-                {{ selectedFile ? selectedFile.name : 'Choose File' }}
+              <RaButton variant="secondary" :disabled="uploadState === 'uploading'" @click="pickFile">
+                <template #icon><Loader2 v-if="uploadState === 'uploading'" :size="14" class="animate-spin" /><Paperclip v-else :size="14" /></template>
+                {{ uploadState === 'uploading' ? 'Uploading…' : selectedFile ? selectedFile.name : uploadedFileKey ? 'Replace file' : 'Choose File' }}
               </RaButton>
+              <p v-if="uploadedFileKey && uploadState !== 'uploading'" class="mt-2 mb-0 text-xs text-(--success)">File uploaded. Submit when you're ready.</p>
             </RaCard>
 
-            <RaButton class="mt-6" :disabled="submitState === 'submitting' || uploadState === 'uploading'" @click="submitCurrentAttempt">
+            <RaButton
+              v-if="assessmentDetail.type !== 'Quiz' || assessmentDetail.questionDisplay !== 'OneAtATime' || currentQuestion >= assessmentDetail.questions.length"
+              class="mt-6"
+              :disabled="submitState === 'submitting' || uploadState === 'uploading'"
+              @click="submitCurrentAttempt()"
+            >
               {{ uploadState === 'uploading' ? 'Uploading…' : submitState === 'submitting' ? 'Submitting…' : 'Submit' }}
               <template #icon-right>
                 <Loader2 v-if="submitState === 'submitting' || uploadState === 'uploading'" :size="14" class="animate-spin" />
@@ -1090,14 +1254,22 @@ watch(() => route.params.id, load, { immediate: true })
               </template>
             </RaButton>
             <p v-if="submitState === 'error'" class="mt-2 mb-0 text-xs text-(--danger)">{{ submitError }}</p>
+            <p class="mt-2 mb-0 text-xs text-(--fg-4)" aria-live="polite">
+              {{ attemptDraft.status.value === 'saving' ? 'Saving…' : attemptDraft.status.value === 'saved' ? 'Your answers are saved.' : attemptDraft.status.value === 'error' ? "Couldn't save just now; we'll keep trying." : '' }}
+            </p>
           </template>
 
           <!-- No live attempt: expired or never started -->
           <RaCard v-else :padding="28" class="text-center">
             <div class="text-sm font-semibold text-(--fg-1) mb-2">Ready to begin?</div>
-            <p v-if="currentAttempt?.status === 'InProgress'" class="m-0 mb-4 text-[13px] text-(--fg-3)">Your previous attempt's time limit expired.</p>
+            <p v-if="currentAttempt?.status === 'InProgress'" class="m-0 mb-4 text-[13px] text-(--fg-3)">
+              Time ran out on your last attempt. Your saved answers are being submitted automatically.
+            </p>
+            <p v-else-if="assessmentDetail.timeLimitMinutes != null" class="m-0 mb-4 text-[13px] text-(--fg-3)">
+              You'll have {{ assessmentDetail.timeLimitMinutes }} minutes once you start. Your answers are saved as you go.
+            </p>
             <RaButton v-if="canStartAttempt" :disabled="startState === 'starting'" @click="startAttemptFlow">
-              {{ startState === 'starting' ? 'Starting…' : 'Start Attempt' }}
+              {{ startState === 'starting' ? 'Starting…' : assessmentDetail.timeLimitMinutes != null ? 'Start (the timer begins)' : 'Start Attempt' }}
               <template #icon-right>
                 <Loader2 v-if="startState === 'starting'" :size="14" class="animate-spin" />
                 <ArrowRight v-else :size="14" />
@@ -1160,5 +1332,12 @@ watch(() => route.params.id, load, { immediate: true })
     :course-id="course.id"
     :lesson-id="selectedFlat?.lesson.id ?? null"
     @open-lesson="selectLesson"
+  />
+
+  <CourseQAPanel
+    v-if="course"
+    v-model:open="qaOpen"
+    :course-id="course.id"
+    :lesson-id="selectedFlat?.lesson.id ?? null"
   />
 </template>

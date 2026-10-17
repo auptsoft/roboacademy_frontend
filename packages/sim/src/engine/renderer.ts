@@ -1,13 +1,38 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { getCapability } from '../robots'
-import type { SceneDefinition } from '../scene/types'
+import { sceneRobots, type SceneDefinition, type SceneRobot } from '../scene/types'
 import { DEG_TO_RAD, yawQuaternion } from './geometry'
 import type { BodyTransform } from './physics'
-import type { SimulationFrame } from './simulation'
+import { buildRobotModel, type RobotModel } from './robots/models'
+import { INK_MAX_POINTS, TRAIL_MAX_POINTS, type Ink, type SimulationFrame, type Trail } from './simulation'
 
 const BORDER_HEIGHT = 0.08
 const BORDER_THICKNESS = 0.04
+/**
+ * Robots' paths (a faint guide that can be hidden) and their pen's ink (part of the drawing, always
+ * shown), as flat strips on the floor: width and height above it, in metres. Ink lies over paths,
+ * and both over the scene's lines.
+ */
+const TRAIL = { width: 0.004, y: 0.0025, opacity: 0.45 }
+const INK = { width: 0.008, y: 0.003 }
+
+/** Flat strips on the floor, rebuilt into a fixed buffer when what they show changes. */
+interface StripMesh {
+  mesh: THREE.Mesh
+  positions: Float32Array
+  /** Per-vertex colours, for ink; paths are one colour. */
+  colors: Float32Array | null
+  width: number
+  y: number
+  /** What was last drawn, so an unchanged path or ink is skipped and a new run's is redrawn. */
+  drawn: Trail | Ink | null
+  drawnVersion: number
+}
+
+interface Run {
+  points: { x: number; z: number }[]
+  color?: THREE.Color
+}
 
 /**
  * Draws a scene with three.js. Purely a view: it reads simulation frames and never touches
@@ -19,7 +44,9 @@ export class ArenaRenderer {
   private readonly scene = new THREE.Scene()
   private readonly camera: THREE.PerspectiveCamera
   private readonly controls: OrbitControls
-  private readonly robot: THREE.Group
+  private readonly robots = new Map<string, RobotModel>()
+  private readonly trails = new Map<string, StripMesh>()
+  private readonly inks = new Map<string, StripMesh>()
   private readonly props = new Map<string, THREE.Object3D>()
   private readonly resizeObserver: ResizeObserver
   private readonly container: HTMLElement
@@ -54,8 +81,13 @@ export class ArenaRenderer {
     this.scene.add(sun)
 
     this.buildArena()
-    this.robot = this.buildRobot()
-    this.scene.add(this.robot)
+    for (const robot of sceneRobots(definition)) {
+      const model = this.buildRobot(robot)
+      this.robots.set(robot.id, model)
+      this.scene.add(model.object)
+      this.trails.set(robot.id, this.buildStrips(TRAIL_MAX_POINTS, TRAIL.width, TRAIL.y, 1, model.color))
+      this.inks.set(robot.id, this.buildStrips(INK_MAX_POINTS, INK.width, INK.y, 2, null))
+    }
 
     this.resizeObserver = new ResizeObserver(() => this.resize())
     this.resizeObserver.observe(container)
@@ -64,7 +96,20 @@ export class ArenaRenderer {
 
   /** Moves bodies to a simulation frame. */
   update(frame: SimulationFrame): void {
-    applyTransform(this.robot, frame.robot)
+    for (const [id, state] of frame.robots) {
+      const model = this.robots.get(id)
+      if (!model) continue
+      applyTransform(model.object, state.transform)
+      model.update(state)
+    }
+    for (const [id, trail] of frame.trails) {
+      const mesh = this.trails.get(id)
+      if (mesh) drawStrips(mesh, trail, () => trail.segments.map((points) => ({ points })))
+    }
+    for (const [id, ink] of frame.ink) {
+      const mesh = this.inks.get(id)
+      if (mesh) drawStrips(mesh, ink, () => ink.strokes.map(({ color, points }) => ({ points, color: new THREE.Color(color) })))
+    }
     for (const [id, transform] of frame.props) {
       const object = this.props.get(id)
       if (object) applyTransform(object, transform)
@@ -74,6 +119,11 @@ export class ArenaRenderer {
   render(): void {
     this.controls.update()
     this.renderer.render(this.scene, this.camera)
+  }
+
+  /** Shows or hides the robots' drawn paths. */
+  setTrailsVisible(visible: boolean): void {
+    for (const trail of this.trails.values()) trail.mesh.visible = visible
   }
 
   /** Returns the camera to its starting view. */
@@ -192,42 +242,88 @@ export class ArenaRenderer {
     }
   }
 
-  private buildRobot(): THREE.Group {
-    const capability = getCapability(this.definition.robot.type)
-    const size = capability?.size ?? { width: 0.18, length: 0.2, height: 0.1 }
-    const group = new THREE.Group()
+  /**
+   * A mesh for up to `maxPoints` points of strips, drawn after the floor, zones and scene lines
+   * (`order`) so it lies on top of them. With no colour, its strips carry their own.
+   */
+  private buildStrips(maxPoints: number, width: number, y: number, order: number, color: string | null): StripMesh {
+    // Two triangles per pair of points, as separate vertices.
+    const positions = new Float32Array(maxPoints * 6 * 3)
+    const colors = color ? null : new Float32Array(maxPoints * 6 * 3)
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage))
+    if (colors) geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3).setUsage(THREE.DynamicDrawUsage))
+    geometry.setDrawRange(0, 0)
+    const material = color
+      ? new THREE.MeshBasicMaterial({ color, transparent: true, opacity: TRAIL.opacity, depthWrite: false, side: THREE.DoubleSide })
+      : new THREE.MeshBasicMaterial({ vertexColors: true, depthWrite: false, side: THREE.DoubleSide })
+    const mesh = new THREE.Mesh(geometry, material)
+    mesh.renderOrder = order
+    mesh.frustumCulled = false
+    this.scene.add(mesh)
+    return { mesh, positions, colors, width, y, drawn: null, drawnVersion: -1 }
+  }
 
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(size.length, size.height * 0.7, size.width * 0.8),
-      new THREE.MeshStandardMaterial({ color: '#2f6fec', roughness: 0.5 }),
-    )
-    body.position.y = size.height * 0.05
-    group.add(body)
+  private buildRobot(robot: SceneRobot): RobotModel {
+    const model = buildRobotModel(robot.type, { color: robot.color })
+    const start = robot.start
+    model.object.position.set(start.x, model.restHeight, start.z)
+    model.object.quaternion.copy(toQuaternion(yawQuaternion(start.headingDeg * DEG_TO_RAD)))
+    return model
+  }
+}
 
-    const wheelRadius = size.height / 2
-    for (const side of [-1, 1]) {
-      const wheel = new THREE.Mesh(
-        new THREE.CylinderGeometry(wheelRadius, wheelRadius, size.width * 0.1, 20),
-        new THREE.MeshStandardMaterial({ color: '#1d232a', roughness: 0.9 }),
-      )
-      wheel.rotation.x = Math.PI / 2
-      wheel.position.set(-size.length * 0.1, 0, (side * size.width) / 2 - side * size.width * 0.05)
-      group.add(wheel)
+function drawStrips(target: StripMesh, source: Trail | Ink, runs: () => Run[]): void {
+  if (target.drawn === source && target.drawnVersion === source.version) return
+  target.drawn = source
+  target.drawnVersion = source.version
+  const { positions, colors, y } = target
+  const half = target.width / 2
+  let v = 0
+  let color: THREE.Color | undefined
+  const put = (x: number, z: number) => {
+    if (colors && color) {
+      colors[v] = color.r
+      colors[v + 1] = color.g
+      colors[v + 2] = color.b
     }
-
-    // A pointer on top, so the heading is readable from any camera angle.
-    const pointer = new THREE.Mesh(
-      new THREE.ConeGeometry(size.width * 0.18, size.length * 0.35, 3),
-      new THREE.MeshStandardMaterial({ color: '#ffd23f' }),
-    )
-    pointer.rotation.z = -Math.PI / 2
-    pointer.position.set(size.length * 0.2, size.height * 0.45, 0)
-    group.add(pointer)
-
-    const start = this.definition.robot.start
-    group.position.set(start.x, size.height / 2, start.z)
-    group.quaternion.copy(toQuaternion(yawQuaternion(start.headingDeg * DEG_TO_RAD)))
-    return group
+    positions[v++] = x
+    positions[v++] = y
+    positions[v++] = z
+  }
+  for (const run of runs()) {
+    color = run.color
+    const { points } = run
+    // A single point is a dot: a square the strip's width.
+    const pairs = points.length === 1 ? [[points[0]!, { x: points[0]!.x + 1e-6, z: points[0]!.z }]] : points.slice(1).map((b, i) => [points[i]!, b])
+    for (const [a, b] of pairs as [Run['points'][number], Run['points'][number]][]) {
+      const length = Math.hypot(b.x - a.x, b.z - a.z)
+      if (length === 0) continue
+      // Along and across the piece; stretched by half the width at each end so corners join up.
+      const ux = (b.x - a.x) / length
+      const uz = (b.z - a.z) / length
+      const ax = a.x - ux * half
+      const az = a.z - uz * half
+      const bx = b.x + ux * half
+      const bz = b.z + uz * half
+      const nx = -uz * half
+      const nz = ux * half
+      if (v + 18 > positions.length) break
+      put(ax + nx, az + nz)
+      put(ax - nx, az - nz)
+      put(bx + nx, bz + nz)
+      put(bx + nx, bz + nz)
+      put(ax - nx, az - nz)
+      put(bx - nx, bz - nz)
+    }
+  }
+  const geometry = target.mesh.geometry
+  geometry.setDrawRange(0, v / 3)
+  for (const name of colors ? ['position', 'color'] : ['position']) {
+    const attribute = geometry.getAttribute(name) as THREE.BufferAttribute
+    attribute.clearUpdateRanges()
+    attribute.addUpdateRange(0, v)
+    attribute.needsUpdate = true
   }
 }
 

@@ -47,13 +47,20 @@
   --line-2: color-mix(in srgb, var(--primary) 10%, var(--border));
   --line-3: color-mix(in srgb, var(--primary) 10%, var(--border));
 
-  /* Flatten corners to match the rounded-none shadcn look; pill stays round. */
-  --ra-xs: 0px;
-  --ra-sm: 0px;
-  --ra-md: 0px;
-  --ra-lg: 0px;
-  --ra-xl: 0px;
-  --ra-2xl: 0px;
+  /* Soft, layered elevation for cards and popovers (replaces the old flat 1px rings). */
+  --shadow-card: 0 1px 2px rgb(16 24 40 / 0.04), 0 1px 3px rgb(16 24 40 / 0.06);
+  --shadow-card-hover: 0 2px 4px rgb(16 24 40 / 0.05), 0 8px 20px -4px rgb(16 24 40 / 0.10);
+}
+
+.dark {
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.30), 0 1px 3px rgb(0 0 0 / 0.20);
+  --shadow-card-hover: 0 2px 4px rgb(0 0 0 / 0.30), 0 8px 20px -4px rgb(0 0 0 / 0.40);
+}
+
+/* RaCard's scoped styles own background/border/radius; elevation is added here so the
+   learner app (which shares RaCard) keeps its flat look. */
+.ra-card {
+  box-shadow: var(--shadow-card);
 }
 
 /* Rendered Markdown (help guides). Same rules as the learner app's .rich-text. */

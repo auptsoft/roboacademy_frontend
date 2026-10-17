@@ -1,15 +1,20 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { ArrowDown, ArrowUp, Copy, MapPin, Plus, Trash2, X } from 'lucide-vue-next'
-import { isAllowedEmbed, toEmbedUrl, type LessonBlock } from '@roboacademy/ui'
+import { ArrowDown, ArrowUp, Copy, Library, Plus, Trash2, X } from 'lucide-vue-next'
+import { isAllowedEmbed, isCheckBlock, toEmbedUrl, type LessonBlock } from '@roboacademy/ui'
 import type { LessonBlockInsight } from '@/api/learning'
 import { Button } from '@/components/ui/button'
 import RichTextEditor from '@/components/RichTextEditor.vue'
-import { UNPLACED, blockTypeMeta, newId } from '@/lib/lesson-blocks'
+import { blockTypeMeta, newId } from '@/lib/lesson-blocks'
 import AssetField from './AssetField.vue'
+import QuestionFields from '@/components/questions/QuestionFields.vue'
+import { isGradedKind, type GradedQuestion } from '@/components/questions/question-kinds'
 import { ACCEPT, uploadLessonAsset, useLessonAssetContext, type UploadedAsset } from './asset-context'
 import { toast } from 'vue-sonner'
 import { ApiError } from '@/api/client'
+import { createQuestionBankItem, type UpsertQuestionBankItemRequest } from '@/api/assessment'
+import { hasPermission } from '@/store/auth'
+import { useRouter } from 'vue-router'
 
 /** Edits one block of an interactive lesson. Errors arrive already scoped to this block, keyed
  * relative to it ("prompt", "options", "items[1].text"). */
@@ -20,6 +25,8 @@ const props = defineProps<{
   errors: Record<string, string[]>
   /** Learner results for this block (check blocks with answers only). */
   insight: LessonBlockInsight | null
+  /** The lesson shows cards, so blocks can be kept on the same card as the next one. */
+  cards: boolean
 }>()
 defineEmits<{ move: [delta: -1 | 1]; duplicate: []; remove: [] }>()
 
@@ -48,10 +55,48 @@ function move<T>(list: T[], index: number, delta: -1 | 1) {
 }
 
 const assets = useLessonAssetContext()
+const router = useRouter()
+
+// Questions can be reused in graded quizzes through the bank. Multiple choice maps onto the bank's
+// original fields (its feedback has no place there yet); order, fill in the blanks, match and
+// number go as they are - the bank and quizzes share their definition with lessons.
+const canSaveToBank = hasPermission('assessment:assessments:author')
+const savingToBank = ref(false)
+
+async function saveToQuestionBank() {
+  if (isGradedKind(block.value.type)) {
+    await saveRequest({ kind: block.value.type, definition: block.value as GradedQuestion })
+    return
+  }
+  if (block.value.type !== 'choice') return
+  const options = block.value.options
+  const correct = options.findIndex(o => o.correct)
+  if (!block.value.prompt.trim() || options.length < 2 || correct === -1 || options.some(o => !o.text.trim())) {
+    toast.error('Finish the question first: a question, at least 2 options and the correct one marked.')
+    return
+  }
+  await saveRequest({ text: block.value.prompt.trim(), options: options.map(o => o.text.trim()), correctOptionIndex: correct })
+}
+
+async function saveRequest(request: UpsertQuestionBankItemRequest) {
+  savingToBank.value = true
+  try {
+    await createQuestionBankItem(request)
+    toast.success('Saved to the question bank.', {
+      action: { label: 'Open', onClick: () => void router.push('/assessment/question-bank') },
+    })
+  } catch (error) {
+    toast.error(error instanceof ApiError ? error.message : "Couldn't save to the question bank.")
+  } finally {
+    savingToBank.value = false
+  }
+}
+
+
 
 // Images (and diagrams) keep the phone-sized copy alongside; a replaced image drops the old one.
 function setImage(uploaded: UploadedAsset) {
-  if (block.value.type !== 'image' && block.value.type !== 'label-diagram') return
+  if (block.value.type !== 'image') return
   block.value.asset = uploaded.key
   block.value.assetSmall = uploaded.smallKey
 }
@@ -100,26 +145,6 @@ const embedUrlProblem = computed(() =>
     ? 'Only Wokwi, Tinkercad, YouTube and H5P links can be embedded.'
     : '')
 
-// Label diagram: pick a label, then click the diagram where it belongs.
-const placingLabelId = ref<string | null>(null)
-const diagramUrl = computed(() =>
-  block.value.type === 'label-diagram' && block.value.asset ? assets.urls.value[block.value.asset] : undefined)
-
-function placeLabel(event: MouseEvent) {
-  if (block.value.type !== 'label-diagram' || !placingLabelId.value) return
-  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-  const label = block.value.labels.find(l => l.id === placingLabelId.value)
-  if (!label) return
-  label.x = Math.round(((event.clientX - rect.left) / rect.width) * 1000) / 10
-  label.y = Math.round(((event.clientY - rect.top) / rect.height) * 1000) / 10
-  const next = block.value.labels.find(l => l.x === UNPLACED)
-  placingLabelId.value = next?.id ?? null
-}
-
-function isPlaced(label: { x: number; y: number }): boolean {
-  return label.x >= 0 && label.y >= 0
-}
-
 function markCorrect(optionId: string) {
   if (block.value.type !== 'choice') return
   for (const option of block.value.options) option.correct = option.id === optionId || undefined
@@ -135,7 +160,7 @@ function markCorrect(optionId: string) {
       <component :is="blockTypeMeta(block.type).icon" :size="14" class="shrink-0 text-(--fg-3)" />
       <span class="text-[13px] font-semibold text-(--fg-1)">{{ index + 1 }}. {{ blockTypeMeta(block.type).label }}</span>
       <label
-        v-if="block.type === 'choice' || block.type === 'order' || block.type === 'label-diagram' || block.type === 'program'"
+        v-if="isCheckBlock(block)"
         class="ml-2 inline-flex items-center gap-1.5 text-xs text-(--fg-3)"
         title="Learners must answer a required check before they can continue"
       >
@@ -146,6 +171,19 @@ function markCorrect(optionId: string) {
           @change="block.required = ($event.target as HTMLInputElement).checked ? undefined : false"
         >
         Required
+      </label>
+      <label
+        v-if="cards && index < total - 1"
+        class="ml-2 inline-flex items-center gap-1.5 text-xs text-(--fg-3)"
+        title="Show this block on the same card as the next one, e.g. a diagram and its question"
+      >
+        <input
+          type="checkbox"
+          class="size-3.5 accent-(--brand-blue)"
+          :checked="block.keepWithNext === true"
+          @change="block.keepWithNext = ($event.target as HTMLInputElement).checked || undefined"
+        >
+        Show with next
       </label>
       <div class="ml-auto flex items-center gap-0.5">
         <Button variant="ghost" size="icon-sm" :class="iconButton" type="button" :disabled="index === 0" aria-label="Move block up" @click="$emit('move', -1)"><ArrowUp :size="14" /></Button>
@@ -211,33 +249,23 @@ function markCorrect(optionId: string) {
           Explanation (shown once answered)
           <input v-model="block.explanation" :class="field" placeholder="Optional">
         </label>
+        <div v-if="canSaveToBank" class="flex items-center gap-2">
+          <Button variant="outline" size="sm" type="button" :disabled="savingToBank" @click="saveToQuestionBank">
+            <Library :size="12" /> {{ savingToBank ? 'Saving…' : 'Save to question bank' }}
+          </Button>
+          <span class="text-xs text-(--fg-4)">For graded quizzes. Saves the question and options; feedback and explanation stay here.</span>
+        </div>
       </template>
 
-      <!-- Order steps -->
-      <template v-else-if="block.type === 'order'">
-        <label class="grid gap-1 text-xs text-(--fg-3)">
-          Instruction
-          <input v-model="block.prompt" :class="field" :aria-invalid="invalid('prompt')" placeholder="e.g. Put the wiring steps in order.">
-        </label>
-        <p v-for="msg in err('prompt')" :key="msg" class="m-0 text-xs text-(--danger)">{{ msg }}</p>
-
-        <div class="flex flex-col gap-2">
-          <span class="text-xs text-(--fg-3)">Steps, in the correct order (learners see them shuffled)</span>
-          <div v-for="(item, j) in block.items" :key="item.id" class="flex items-center gap-2">
-            <span class="w-5 shrink-0 text-center text-xs font-semibold text-(--fg-3)">{{ j + 1 }}</span>
-            <input v-model="item.text" :class="field" :aria-invalid="invalid(`items[${j}].text`)" :placeholder="`Step ${j + 1}`">
-            <Button variant="ghost" size="icon-sm" :class="iconButton" type="button" :disabled="j === 0" aria-label="Move step up" @click="move(block.items, j, -1)"><ArrowUp :size="14" /></Button>
-            <Button variant="ghost" size="icon-sm" :class="iconButton" type="button" :disabled="j === block.items.length - 1" aria-label="Move step down" @click="move(block.items, j, 1)"><ArrowDown :size="14" /></Button>
-            <Button variant="ghost" size="icon-sm" :class="iconButton" type="button" :disabled="block.items.length <= 2" aria-label="Remove step" @click="block.items.splice(j, 1)"><X :size="14" /></Button>
-          </div>
-          <Button variant="ghost" size="sm" type="button" class="self-start" @click="block.items.push({ id: newId(), text: '' })"><Plus :size="14" /> Add step</Button>
-          <p v-for="msg in err('items')" :key="msg" class="m-0 text-xs text-(--danger)">{{ msg }}</p>
+      <!-- Order, fill in the blanks, match, number: shared with quizzes and the question bank -->
+      <template v-else-if="isGradedKind(block.type)">
+        <QuestionFields v-model:question="block" :errors="errors" />
+        <div v-if="canSaveToBank" class="flex items-center gap-2">
+          <Button variant="outline" size="sm" type="button" :disabled="savingToBank" @click="saveToQuestionBank">
+            <Library :size="12" /> {{ savingToBank ? 'Saving…' : 'Save to question bank' }}
+          </Button>
+          <span class="text-xs text-(--fg-4)">For graded quizzes, where the server marks it.</span>
         </div>
-
-        <label class="grid gap-1 text-xs text-(--fg-3)">
-          Explanation (shown once answered)
-          <input v-model="block.explanation" :class="field" placeholder="Optional">
-        </label>
       </template>
 
       <!-- Reveal -->
@@ -348,69 +376,6 @@ function markCorrect(optionId: string) {
           </label>
         </div>
         <p v-for="msg in err('title')" :key="msg" class="m-0 text-xs text-(--danger)">{{ msg }}</p>
-      </template>
-
-      <!-- Label the diagram -->
-      <template v-else-if="block.type === 'label-diagram'">
-        <label class="grid gap-1 text-xs text-(--fg-3)">
-          Instruction
-          <input v-model="block.prompt" :class="field" :aria-invalid="invalid('prompt')">
-        </label>
-        <AssetField kind="image" label="Diagram" :asset-key="block.asset" :invalid="invalid('asset')" @uploaded="setImage" />
-        <p v-for="msg in err('asset')" :key="msg" class="m-0 text-xs text-(--danger)">{{ msg }}</p>
-        <label class="grid gap-1 text-xs text-(--fg-3)">
-          Description (alt text)
-          <input v-model="block.alt" :class="field" :aria-invalid="invalid('alt')" placeholder="e.g. Top view of an Arduino Uno">
-        </label>
-
-        <div v-if="diagramUrl" class="flex flex-col gap-1.5">
-          <span class="text-xs text-(--fg-3)">
-            {{ placingLabelId ? 'Click the diagram where this label belongs.' : 'Choose "Place" on a label, then click the diagram.' }}
-          </span>
-          <div
-            class="relative overflow-hidden rounded-(--ra-md) border border-(--line-2)"
-            :class="placingLabelId ? 'cursor-crosshair' : ''"
-            @click="placeLabel"
-          >
-            <img :src="diagramUrl" :alt="block.alt" class="block h-auto w-full select-none" draggable="false">
-            <span
-              v-for="label in block.labels.filter(isPlaced)"
-              :key="label.id"
-              class="pointer-events-none absolute flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white text-[11px] font-bold text-white shadow"
-              :class="label.id === placingLabelId ? 'bg-(--warning)' : 'bg-(--brand-blue)'"
-              :style="{ left: `${label.x}%`, top: `${label.y}%` }"
-              :title="label.text"
-            >
-              {{ block.labels.indexOf(label) + 1 }}
-            </span>
-          </div>
-        </div>
-
-        <div class="flex flex-col gap-2">
-          <span class="text-xs text-(--fg-3)">Labels (learners see them as a list and match each to a marker)</span>
-          <div v-for="(label, j) in block.labels" :key="label.id" class="flex items-center gap-2">
-            <span class="w-5 shrink-0 text-center text-xs font-semibold text-(--fg-3)">{{ j + 1 }}</span>
-            <input v-model="label.text" :class="field" :aria-invalid="invalid(`labels[${j}].text`) || invalid(`labels[${j}]`)" :placeholder="`Label ${j + 1}`">
-            <Button
-              :variant="placingLabelId === label.id ? 'default' : 'outline'"
-              size="sm"
-              type="button"
-              :disabled="!diagramUrl"
-              @click="placingLabelId = placingLabelId === label.id ? null : label.id"
-            >
-              <MapPin :size="12" /> {{ isPlaced(label) ? 'Move' : 'Place' }}
-            </Button>
-            <Button variant="ghost" size="icon-sm" :class="iconButton" type="button" :disabled="block.labels.length <= 2" aria-label="Remove label" @click="block.labels.splice(j, 1)"><X :size="14" /></Button>
-          </div>
-          <Button variant="ghost" size="sm" type="button" class="self-start" @click="block.labels.push({ id: newId(), text: '', x: UNPLACED, y: UNPLACED })"><Plus :size="14" /> Add label</Button>
-          <p v-for="msg in err('labels')" :key="msg" class="m-0 text-xs text-(--danger)">{{ msg }}</p>
-          <p v-if="block.labels.some((_, j) => invalid(`labels[${j}]`))" class="m-0 text-xs text-(--danger)">Place every label on the diagram.</p>
-        </div>
-
-        <label class="grid gap-1 text-xs text-(--fg-3)">
-          Explanation (shown once answered)
-          <input v-model="block.explanation" :class="field" placeholder="Optional">
-        </label>
       </template>
 
       <!-- Photo gallery -->

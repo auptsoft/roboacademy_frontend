@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { Lightbulb, Loader2 } from 'lucide-vue-next'
 import { RaButton, RaCard } from '@roboacademy/ui'
 import { LANGUAGE_LABELS, SUPPORTED_LANGUAGES, type ProgramLanguage } from '@roboacademy/sim'
@@ -15,6 +15,9 @@ import {
   type SimulationLesson,
 } from '@/api/simulation'
 import { useAIAvailability } from '@/composables/useAIAvailability'
+import { useAchievements } from '@/composables/useAchievements'
+import { brandingKey, featureConfirmed } from '@/branding'
+import ChallengeStars from '@/components/gamification/ChallengeStars.vue'
 
 /**
  * A Simulation lesson in the in-house simulator. Loads the scene, saves the learner's program as
@@ -38,10 +41,17 @@ const loadState = ref<'loading' | 'ready' | 'error'>('loading')
 const loadError = ref('')
 const saveState = ref<'idle' | 'saving' | 'error'>('idle')
 const submitting = ref(false)
-const lastGraded = ref<{ score: number; passed: boolean } | null>(null)
+const lastGraded = ref<{ score: number; passed: boolean; stars: number | null } | null>(null)
 const submitError = ref('')
 
 const { simHintsAvailable } = useAIAvailability()
+
+// Challenge stars are worked out for every graded run, but shown only on plans with gamification.
+const branding = inject(brandingKey, null)
+const showStars = computed(() => featureConfirmed(branding?.value, 'gamification'))
+const { checkSoon: checkAchievementsSoon } = useAchievements()
+/** Best stars across visits, raised as runs in this visit earn more. */
+const bestStars = computed(() => Math.max(lesson.value?.best?.stars ?? 0, lastGraded.value?.stars ?? 0))
 const hint = shallowRef<SimulationHint | null>(null)
 const hintState = ref<'idle' | 'loading' | 'error'>('idle')
 const hintError = ref('')
@@ -127,8 +137,9 @@ async function record({ runId, mode, program, generatedCode, result }: RunEndPay
       summary: result.summary,
     })
     if (mode === 'graded') {
-      lastGraded.value = { score: scored.score, passed: scored.passed }
-      emit('graded', lastGraded.value)
+      lastGraded.value = { score: scored.score, passed: scored.passed, stars: scored.stars }
+      emit('graded', { score: scored.score, passed: scored.passed })
+      if (scored.passed) checkAchievementsSoon()
     }
     offerHint.value = simHintsAvailable.value && result.outcome !== 'objectives_met' && result.outcome !== 'stopped'
   } catch (err) {
@@ -225,6 +236,15 @@ onBeforeUnmount(() => void flushSave())
         <span v-if="submitting">Saving your result…</span>
         <span v-else-if="lastGraded" :class="lastGraded.passed ? 'text-(--success)' : 'text-(--danger)'">
           Scored {{ lastGraded.score }}% &mdash; {{ lastGraded.passed ? 'passed' : 'not passed yet, try again' }}.
+        </span>
+        <span v-if="showStars && !submitting && lastGraded?.passed && lastGraded.stars" class="inline-flex items-center gap-1.5">
+          <ChallengeStars :stars="lastGraded.stars" :size="14" />
+          <template v-if="lastGraded.stars < 3">
+            {{ lastGraded.stars === 1 ? 'Meet every objective for another star.' : 'Beat the target for the third star.' }}
+          </template>
+        </span>
+        <span v-else-if="showStars && !lastGraded && bestStars > 0" class="inline-flex items-center gap-1.5">
+          <ChallengeStars :stars="bestStars" :size="14" /> best so far
         </span>
         <span v-else-if="lesson.best">
           Best so far: {{ lesson.best.score }}%{{ lesson.best.passed ? ' (passed)' : '' }}.

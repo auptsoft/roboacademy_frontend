@@ -18,6 +18,9 @@ export class ProgramSession {
   private readonly pending = new Map<number, (value: number | boolean | undefined) => void>()
   private failed = false
   private readonly post: (message: WorkerToHost) => void
+  /** Block programs' implicit robot, and whether their commands wait to finish. */
+  private currentRobot = 'robot'
+  private together = false
 
   constructor(post: (message: WorkerToHost) => void) {
     this.post = post
@@ -46,13 +49,13 @@ export class ProgramSession {
     this.post({ type: 'error', message })
   }
 
-  private call(kind: CallKind, name: string, args: Record<string, unknown>, resume: Resume): void {
+  private call(kind: CallKind, name: string, args: Record<string, unknown>, resume: Resume, target: { robot?: string; wait?: boolean } = {}): void {
     const id = this.nextCallId++
     this.pending.set(id, (value) => {
       resume(value)
       this.run()
     })
-    this.post({ type: 'call', id, kind, name, args })
+    this.post({ type: 'call', id, kind, name, args, ...target })
   }
 
   private run(): void {
@@ -67,24 +70,73 @@ export class ProgramSession {
 
   private start(message: StartMessage): void {
     try {
+      this.currentRobot = message.robots[0]?.id ?? 'robot'
+      const params = new Map(message.robots.map((robot) => [robot.id, new Map(robot.commands.map((c) => [c.name, c.params]))]))
+      // Positional arguments, named from the robot's command specs.
+      const named = (robot: string, name: string, values: unknown[]) => {
+        const args: Record<string, unknown> = {}
+        params.get(robot)?.get(name)?.forEach((param, i) => {
+          if (values[i] !== undefined) args[param] = values[i]
+        })
+        return args
+      }
+      const asyncFunction = (interp: Interpreter, impl: (...raw: unknown[]) => void, length: number) => {
+        // JS-Interpreter pads a call's arguments to the async function's declared length (the
+        // parameters plus the callback). A rest-parameter function declares none, so set it.
+        Object.defineProperty(impl, 'length', { value: length + 1 })
+        return interp.createAsyncFunction(impl as AsyncImpl)
+      }
+
       this.interpreter = new Interpreter(message.code, (interp, globalObject) => {
-        for (const command of message.commands) {
+        // Block programs call each command by name, for the robot `__useRobot` last chose.
+        const names = new Map<string, number>()
+        for (const robot of message.robots) {
+          for (const command of robot.commands) names.set(command.name, Math.max(names.get(command.name) ?? 0, command.params.length))
+        }
+        for (const [name, length] of names) {
           const impl = (...raw: unknown[]) => {
             const resume = raw.pop() as Resume
-            const args: Record<string, unknown> = {}
-            command.params.forEach((param, i) => {
-              if (raw[i] !== undefined) args[param] = raw[i]
-            })
-            this.call('command', command.name, args, () => resume(undefined))
+            const robot = this.currentRobot
+            this.call('command', name, named(robot, name, raw), () => resume(undefined), { robot, wait: !this.together })
           }
-          // JS-Interpreter pads a call's arguments to the async function's declared length (the
-          // parameters plus the callback). A rest-parameter function declares none, so set it.
-          Object.defineProperty(impl, 'length', { value: command.params.length + 1 })
-          interp.setProperty(globalObject, command.name, interp.createAsyncFunction(impl as AsyncImpl))
+          interp.setProperty(globalObject, name, asyncFunction(interp, impl, length))
         }
 
-        const readSensor = (name: unknown, resume: Resume) => this.call('sensor', String(name), {}, resume)
+        const readSensor = (name: unknown, resume: Resume) => this.call('sensor', String(name), {}, resume, { robot: this.currentRobot })
         interp.setProperty(globalObject, RUNTIME_GLOBALS.readSensor, interp.createAsyncFunction(readSensor as AsyncImpl))
+
+        // Text programs name the robot in every call, through the prelude's robot objects.
+        const robotCommand = (...raw: unknown[]) => {
+          const resume = raw.pop() as Resume
+          const [robot, wait, name, ...values] = raw
+          this.call('command', String(name), named(String(robot), String(name), values), () => resume(undefined), {
+            robot: String(robot),
+            wait: wait !== false,
+          })
+        }
+        interp.setProperty(globalObject, RUNTIME_GLOBALS.robotCommand, asyncFunction(interp, robotCommand, 6))
+
+        const robotSensor = (robot: unknown, name: unknown, resume: Resume) =>
+          this.call('sensor', String(name), {}, resume, { robot: String(robot) })
+        interp.setProperty(globalObject, RUNTIME_GLOBALS.robotSensor, interp.createAsyncFunction(robotSensor as AsyncImpl))
+
+        const robotIdle = (robot: unknown, resume: Resume) =>
+          this.call('idle', '', {}, () => resume(undefined), robot ? { robot: String(robot) } : {})
+        interp.setProperty(globalObject, RUNTIME_GLOBALS.robotIdle, interp.createAsyncFunction(robotIdle as AsyncImpl))
+
+        const useRobot = (robot: unknown) => {
+          const previous = this.currentRobot
+          this.currentRobot = String(robot)
+          return previous
+        }
+        interp.setProperty(globalObject, RUNTIME_GLOBALS.useRobot, interp.createNativeFunction(useRobot as NativeImpl))
+
+        const together = (on: unknown) => {
+          const previous = this.together
+          this.together = !!on
+          return previous
+        }
+        interp.setProperty(globalObject, RUNTIME_GLOBALS.together, interp.createNativeFunction(together as NativeImpl))
 
         const tick = (resume: Resume) => this.call('tick', '', {}, () => resume(undefined))
         interp.setProperty(globalObject, RUNTIME_GLOBALS.tick, interp.createAsyncFunction(tick as AsyncImpl))

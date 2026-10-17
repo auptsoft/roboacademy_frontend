@@ -1,6 +1,6 @@
 import type { LuaEngine } from 'wasmoon'
 import { instrumentLua } from '../languages/lua/instrument'
-import { LUA_PRELUDE } from '../languages/lua/prelude'
+import { luaPrelude } from '../languages/lua/prelude'
 import type { CallKind, HostToWorker, StartMessage, WorkerToHost } from './protocol'
 
 /**
@@ -44,11 +44,11 @@ export class LuaSession {
     }
   }
 
-  private call(kind: CallKind, name: string, args: Record<string, unknown>): Promise<unknown> {
+  private call(kind: CallKind, name: string, args: Record<string, unknown>, target: { robot?: string; wait?: boolean } = {}): Promise<unknown> {
     const id = this.nextCallId++
     return new Promise((resolve) => {
       this.pending.set(id, resolve)
-      this.post({ type: 'call', id, kind, name, args })
+      this.post({ type: 'call', id, kind, name, args, ...target })
     })
   }
 
@@ -74,21 +74,22 @@ export class LuaSession {
     }
 
     // Positional arguments, named from the robot's command specs, as ProgramSession does.
-    const params = new Map(message.commands.map((c) => [c.name, c.params]))
-    engine.global.set('_sim_command', (name: string, ...values: unknown[]) => {
+    const params = new Map(message.robots.map((robot) => [robot.id, new Map(robot.commands.map((c) => [c.name, c.params]))]))
+    engine.global.set('_sim_command', (robot: string, wait: boolean, name: string, ...values: unknown[]) => {
       const args: Record<string, unknown> = {}
-      params.get(name)?.forEach((param, i) => {
+      params.get(robot)?.get(name)?.forEach((param, i) => {
         if (values[i] !== undefined && values[i] !== null) args[param] = values[i]
       })
-      return this.call('command', name, args)
+      return this.call('command', name, args, { robot, wait: wait !== false })
     })
-    engine.global.set('_sim_sensor', (name: string) => this.call('sensor', name, {}))
+    engine.global.set('_sim_sensor', (robot: string, name: string) => this.call('sensor', name, {}, { robot }))
+    engine.global.set('_sim_idle', (robot: string) => this.call('idle', '', {}, robot ? { robot } : {}))
     engine.global.set('_sim_tick', () => this.call('tick', '', {}))
     engine.global.set('_sim_line', (line: number) => this.post({ type: 'highlight', blockId: `L${line}` }))
     engine.global.set('_sim_print', (text: string) => this.post({ type: 'print', text: String(text).slice(0, 500) }))
 
     try {
-      engine.doStringSync(LUA_PRELUDE)
+      engine.doStringSync(luaPrelude(message.robots))
     } catch {
       this.fail('Lua could not be started.')
       return

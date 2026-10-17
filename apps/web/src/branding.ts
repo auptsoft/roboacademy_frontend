@@ -61,3 +61,9 @@ export const brandingKey: InjectionKey<Ref<TenantBranding>> = Symbol('tenant-bra
 export function hasFeature(branding: TenantBranding | null | undefined, key: string): boolean {
   return branding?.features?.[key] ?? true
 }
+
+// Strict form for extras that only call APIs gated on the feature (e.g. gamification): true only
+// once branding has loaded and lists the feature as on, so nothing is fetched just to get a 403.
+export function featureConfirmed(branding: TenantBranding | null | undefined, key: string): boolean {
+  return branding?.features?.[key] === true
+}

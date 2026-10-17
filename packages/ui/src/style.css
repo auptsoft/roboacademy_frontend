@@ -5,6 +5,7 @@
 /* Workspace packages are reached through node_modules, which Tailwind doesn't scan; the lesson
    blocks (here, and their heavy players in @roboacademy/sim) use utility classes, so point it at them. */
 @source "./components/lesson-blocks";
+@source "./components/quiz";
 @source "../../sim/src/vue/lesson";
 @import "tw-animate-css";
 @import "@fontsource-variable/inter";

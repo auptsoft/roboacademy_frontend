@@ -15,6 +15,8 @@ export interface SimulationBestResult {
   score: number
   passed: boolean
   submittedAt: string
+  /** The most challenge stars on any graded run (0-3); null when no graded run has stars yet. */
+  stars: number | null
 }
 
 export interface SimulationLesson {
@@ -46,6 +48,8 @@ export interface SubmitRunResult {
   runId: string
   score: number
   passed: boolean
+  /** Challenge stars (0-3) for a graded run; null for a practice run. */
+  stars: number | null
 }
 
 export function getSimulationLesson(lessonId: string): Promise<SimulationLesson> {

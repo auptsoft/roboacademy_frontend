@@ -1,7 +1,8 @@
 import {
   LayoutGrid, Users, Building2, Settings2, GraduationCap, ScrollText,
   BookOpen, Route, Video, ClipboardList, HelpCircle, FileQuestion, Bot, BadgeCheck, ClipboardCheck,
-  UserCheck, CalendarDays, CalendarRange, Megaphone, Layers, Sparkles, LifeBuoy, Boxes, CreditCard, Receipt, Landmark, Undo2, Scale,
+  UserCheck, CalendarDays, CalendarRange, Megaphone, Layers, Sparkles, LifeBuoy, Boxes, CreditCard, Receipt, Landmark, Undo2, Scale, Trophy,
+  MessagesSquare, ShieldCheck, MessageCircle, UsersRound,
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
 import { getActiveTenantId } from '@/store/auth'
@@ -25,9 +26,9 @@ export interface AdminNavLeaf {
   // For a school's own screens that platform operators hold every permission for but have no use
   // for at home (they manage the platform's equivalents). Still shown while viewing a school.
   schoolOnly?: boolean
-  // A plan feature key (see the backend's PlanFeatureKeys). Hidden when the active tenant's plan
-  // doesn't include it - the API rejects those calls anyway.
-  feature?: string
+  // A plan feature key (see the backend's PlanFeatureKeys), or several of which any one will do.
+  // Hidden when the active tenant's plan doesn't include it - the API rejects those calls anyway.
+  feature?: string | string[]
 }
 
 export interface AdminNavGroup {
@@ -98,6 +99,18 @@ export const adminNav: AdminNavEntry[] = [
   { id: 'calendar', label: 'Calendar', icon: CalendarRange, path: '/calendar', permission: 'scheduling:events:manage' },
   { id: 'announcements', label: 'Announcements', icon: Megaphone, path: '/announcements', permission: 'notifications:announcements:manage', feature: 'announcements' },
   { id: 'certificates', label: 'Certificates', icon: BadgeCheck, path: '/certificates', permission: 'certification:certificates:issue', feature: 'certificates' },
+  { id: 'gamification', label: 'Achievements', icon: Trophy, path: '/gamification', permission: ['gamification:settings:manage', 'gamification:badges:manage'], feature: 'gamification' },
+  {
+    id: 'community',
+    label: 'Community',
+    icon: MessagesSquare,
+    items: [
+      { id: 'community-moderation', label: 'Moderation', icon: ShieldCheck, path: '/community/moderation', permission: 'community:moderate', feature: ['community_board', 'community_qa', 'community_study_groups'] },
+      { id: 'community-chat', label: 'Chat moderation', icon: MessageCircle, path: '/community/chat', permission: 'community:moderate', feature: ['community_group_chat', 'community_direct_messages'] },
+      { id: 'community-groups', label: 'Study groups', icon: UsersRound, path: '/community/groups', permission: 'community:moderate', feature: 'community_study_groups' },
+      { id: 'community-settings', label: 'Settings', icon: Settings2, path: '/community/settings', permission: 'community:settings:manage', feature: ['community_board', 'community_qa', 'community_study_groups', 'community_group_chat', 'community_direct_messages'] },
+    ],
+  },
   { id: 'tenants', label: 'Tenants', icon: Building2, path: '/tenants', permission: 'tenancy:manage', hiddenWhileImpersonating: true },
   { id: 'plans', label: 'Plans', icon: Layers, path: '/plans', permission: 'tenancy:plans:manage', hiddenWhileImpersonating: true },
   { id: 'ai-models', label: 'AI Models', icon: Sparkles, path: '/ai-models', permission: 'ai:models:manage', hiddenWhileImpersonating: true },

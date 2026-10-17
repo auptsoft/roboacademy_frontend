@@ -1,14 +1,13 @@
 import { inject, type InjectionKey, type Ref } from 'vue'
-import { getLessonAssetUploadUrl } from '@/api/learning'
 
 /**
- * Shared by the content editor's media fields: where to upload, and the URLs to preview files
- * with - signed URLs for saved files, local object URLs for ones just uploaded.
+ * Shared by media fields wherever questions and blocks are edited: how to get an upload URL, and
+ * the URLs to preview files with - signed URLs for saved files, local object URLs for ones just
+ * uploaded. The lesson content editor uploads into the lesson; quiz and question bank pages into
+ * the assessment store (see provideAssessmentAssets).
  */
 export interface LessonAssetContext {
-  courseId: string
-  moduleId: string
-  lessonId: string
+  requestUpload(request: { contentType: string; fileName: string; sizeBytes: number }): Promise<{ uploadUrl: string; objectKey: string }>
   urls: Ref<Record<string, string>>
 }
 
@@ -16,8 +15,13 @@ export const lessonAssetContextKey: InjectionKey<LessonAssetContext> = Symbol('l
 
 export function useLessonAssetContext(): LessonAssetContext {
   const context = inject(lessonAssetContextKey)
-  if (!context) throw new Error('Lesson media fields must be used inside the lesson content editor.')
+  if (!context) throw new Error('Media fields need an asset context (the lesson editor, or a quiz or question bank page).')
   return context
+}
+
+/** For editors that only sometimes need media (QuestionFields): null when there's no context. */
+export function useOptionalAssetContext(): LessonAssetContext | null {
+  return inject(lessonAssetContextKey, null)
 }
 
 const LARGE_WIDTH = 1600
@@ -88,9 +92,7 @@ async function uploadBlob(
   context: LessonAssetContext, blob: Blob, fileName: string, onProgress: (fraction: number) => void,
 ): Promise<string> {
   const contentType = blob.type || 'application/octet-stream'
-  const { uploadUrl, objectKey } = await getLessonAssetUploadUrl(
-    context.courseId, context.moduleId, context.lessonId, { contentType, fileName, sizeBytes: blob.size },
-  )
+  const { uploadUrl, objectKey } = await context.requestUpload({ contentType, fileName, sizeBytes: blob.size })
   // Straight to R2, not through apiFetch. XHR rather than fetch for upload progress.
   await new Promise<void>((resolve, reject) => {
     const request = new XMLHttpRequest()

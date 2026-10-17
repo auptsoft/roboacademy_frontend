@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { RaKpi, RaCard, RaChip, RaStatusDot, formatDate } from '@roboacademy/ui'
-import { ArrowRight, Building2, Users as UsersIcon, History } from 'lucide-vue-next'
+import { RaKpi, RaCard, RaChip, RaStatusDot } from '@roboacademy/ui'
+import {
+  ArrowRight, Building2, Users as UsersIcon, History, Gauge, Sparkles, BookOpen, Video,
+  ClipboardCheck, BadgeCheck, Boxes,
+} from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
-import UserPreviewPopover from '@/components/UserPreviewPopover.vue'
+import ActivityTimeline from '@/components/ActivityTimeline.vue'
 import type { PageMeta } from '@/api/client'
 import { listTenants, type Tenant } from '@/api/tenancy'
 import { listUsers, getIdentityAuditLog, type AdminUser, type IdentityAuditLogItem } from '@/api/identity'
@@ -12,7 +15,7 @@ import { listCourseCatalog, listLiveClasses } from '@/api/learning'
 import { listCertificates } from '@/api/certification'
 import { listAdminLabSessions } from '@/api/roboticsLab'
 import { listAttempts } from '@/api/assessment'
-import { hasPermission, getImpersonationTarget } from '@/store/auth'
+import { hasPermission, getImpersonationTarget, getCurrentUser } from '@/store/auth'
 import { getTenantId } from '@/api/session'
 import { getEnv } from '@/lib/runtime-env'
 import { useCachedQuery } from '@/composables/useCachedQuery'
@@ -63,6 +66,28 @@ const totalUsers = computed(() => usersData.value?.meta.totalCount ?? 0)
 const storedTenantId = getTenantId()
 const isPlatformWide = computed(() => PLATFORM_TENANT_ID === storedTenantId)
 const impersonation = computed(() => getImpersonationTarget())
+
+const firstName = getCurrentUser()?.fullName.split(' ')[0] ?? ''
+const greeting = (() => {
+  const hour = new Date().getHours()
+  const part = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
+  return firstName ? `${part}, ${firstName}` : part
+})()
+const today = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+
+// Tile accents - fixed hues so each module reads the same on every tenant's brand color.
+const accent = {
+  brand: 'var(--brand-blue)',
+  violet: '#8B5CF6',
+  teal: '#14B8A6',
+  amber: 'var(--warning)',
+  green: 'var(--success)',
+  rose: '#F43F5E',
+} as const
+
+function usagePercent(used: number, limit: number): number {
+  return limit > 0 ? Math.round((used / limit) * 100) : 0
+}
 
 const subtitle = computed(() => {
   if (impersonation.value) return `Viewing ${impersonation.value.tenantName}.`
@@ -124,9 +149,12 @@ const activity = computed<IdentityAuditLogItem[]>(() => activityData.value?.item
 
 <template>
   <div class="flex max-w-(--content-max) mx-auto flex-col gap-7 pt-8 px-8 pb-12 max-md:gap-5 max-md:pt-5 max-md:px-4 max-md:pb-8">
-    <div>
-      <h1 class="m-0 text-[32px] font-bold tracking-[-0.01em] text-(--fg-1)">Dashboard</h1>
-      <p class="mt-1.5 text-sm text-(--fg-3)">{{ subtitle }}</p>
+    <div class="flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <p class="m-0 text-[13px] font-medium text-(--fg-3)">{{ today }}</p>
+        <h1 class="mt-1 mb-0 text-[30px] font-bold tracking-[-0.02em] text-(--fg-1) max-md:text-2xl">{{ greeting }}</h1>
+        <p class="mt-1 mb-0 text-sm text-(--fg-3)">{{ subtitle }}</p>
+      </div>
     </div>
 
     <PlanLimitBanner
@@ -134,43 +162,45 @@ const activity = computed<IdentityAuditLogItem[]>(() => activityData.value?.item
       :enforcement-mode="tenantUsage.usage.value?.enforcementMode"
     />
 
-    <div class="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-4">
-      <RaKpi v-if="isPlatformWide" label="Total Tenants" :value="String(totalTenants)" class="ring-1 ring-inset ring-(--brand-blue-ring)" />
-      <RaKpi label="Total Users" :value="String(totalUsers)" class="ring-1 ring-inset ring-(--brand-blue-ring)" />
+    <div class="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
+      <RaKpi v-if="isPlatformWide" label="Total Tenants" :value="String(totalTenants)" :icon="Building2" :accent="accent.brand" />
+      <RaKpi label="Total Users" :value="String(totalUsers)" :icon="UsersIcon" :accent="accent.violet" />
       <RaKpi
         v-for="limit in cappedLimits"
         :key="limit.key"
         :label="`${limit.label} (plan)`"
         :value="`${limit.used.toLocaleString()} / ${limit.limit!.toLocaleString()}`"
         :delta="seatsDelta(limit.used, limit.limit!)"
-        :delta-tone="limit.atLimit || limit.overLimit ? 'muted' : 'success'"
-        class="ring-1 ring-inset ring-(--brand-blue-ring)"
+        :delta-tone="limit.atLimit || limit.overLimit ? 'danger' : 'muted'"
+        :icon="Gauge"
+        :accent="accent.teal"
+        :progress="usagePercent(limit.used, limit.limit!)"
       />
       <RaKpi
         v-if="aiTile"
         label="AI allowance (month)"
         :value="`${aiTile.percent}% used`"
         :delta="aiTile.atLimit ? 'Used up — renews on the 1st' : `${100 - aiTile.percent}% left`"
-        :delta-tone="aiTile.atLimit ? 'muted' : 'success'"
-        class="ring-1 ring-inset ring-(--brand-blue-ring)"
+        :delta-tone="aiTile.atLimit ? 'danger' : 'muted'"
+        :icon="Sparkles"
+        :accent="accent.violet"
+        :progress="aiTile.percent"
       />
-      <RaKpi label="Courses" :value="totalCourses === null ? '—' : String(totalCourses)" class="ring-1 ring-inset ring-(--brand-blue-ring)" />
-      <RaKpi label="Live Classes" :value="totalLiveClasses === null ? '—' : String(totalLiveClasses)" class="ring-1 ring-inset ring-(--brand-blue-ring)" />
-      <RaKpi v-if="hasPermission('assessment:assessments:author')" label="Pending Grading" :value="totalPendingGrading === null ? '—' : String(totalPendingGrading)" class="ring-1 ring-inset ring-(--brand-blue-ring)" />
-      <RaKpi v-if="hasPermission('certification:certificates:issue')" label="Certificates Issued" :value="totalCertificates === null ? '—' : String(totalCertificates)" class="ring-1 ring-inset ring-(--brand-blue-ring)" />
-      <RaKpi v-if="hasPermission('roboticslab:labsessions:manage')" label="Upcoming Lab Sessions" :value="totalRoboticsSessions === null ? '—' : String(totalRoboticsSessions)" class="ring-1 ring-inset ring-(--brand-blue-ring)" />
+      <RaKpi label="Courses" :value="totalCourses === null ? '—' : String(totalCourses)" :icon="BookOpen" :accent="accent.brand" />
+      <RaKpi label="Live Classes" :value="totalLiveClasses === null ? '—' : String(totalLiveClasses)" :icon="Video" :accent="accent.rose" />
+      <RaKpi v-if="hasPermission('assessment:assessments:author')" label="Pending Grading" :value="totalPendingGrading === null ? '—' : String(totalPendingGrading)" :icon="ClipboardCheck" :accent="accent.amber" />
+      <RaKpi v-if="hasPermission('certification:certificates:issue')" label="Certificates Issued" :value="totalCertificates === null ? '—' : String(totalCertificates)" :icon="BadgeCheck" :accent="accent.green" />
+      <RaKpi v-if="hasPermission('roboticslab:labsessions:manage')" label="Upcoming Lab Sessions" :value="totalRoboticsSessions === null ? '—' : String(totalRoboticsSessions)" :icon="Boxes" :accent="accent.teal" />
     </div>
 
     <div class="grid grid-cols-2 gap-4 max-lg:grid-cols-1">
-      <RaCard v-if="isPlatformWide" :padding="0" class="relative overflow-hidden ring-1 ring-inset ring-(--brand-blue-ring)">
-        <div class="pointer-events-none absolute -top-20 -right-20 -z-10 h-56 w-56 rounded-full bg-(--brand-blue-soft) blur-3xl" aria-hidden="true" />
-        <div class="absolute inset-x-0 top-0 h-0.75 bg-primary" aria-hidden="true" />
-        <div class="flex items-center justify-between border-b border-(--line-1) py-5 px-6">
+      <RaCard v-if="isPlatformWide" :padding="0" class="overflow-hidden">
+        <div class="flex items-center justify-between border-b border-(--line-1) py-4 px-6">
           <div class="flex items-center gap-2.5">
-            <span class="flex size-7 items-center justify-center rounded-full bg-(--brand-blue-soft) text-primary">
+            <span class="flex size-8 items-center justify-center rounded-(--ra-md) bg-(--brand-blue-soft) text-primary">
               <Building2 :size="14" />
             </span>
-            <h3 class="m-0 text-lg font-bold text-(--fg-1)">Tenants</h3>
+            <h3 class="m-0 text-base font-semibold text-(--fg-1)">Tenants</h3>
           </div>
           <Button variant="ghost" size="sm" @click="router.push('/tenants')">
             View all <ArrowRight :size="14" />
@@ -198,15 +228,13 @@ const activity = computed<IdentityAuditLogItem[]>(() => activityData.value?.item
         </ul>
       </RaCard>
 
-      <RaCard :padding="0" class="relative overflow-hidden ring-1 ring-inset ring-(--brand-blue-ring)">
-        <div class="pointer-events-none absolute -top-20 -right-20 -z-10 h-56 w-56 rounded-full bg-(--brand-blue-soft) blur-3xl" aria-hidden="true" />
-        <div class="absolute inset-x-0 top-0 h-0.75 bg-primary" aria-hidden="true" />
-        <div class="flex items-center justify-between border-b border-(--line-1) py-5 px-6">
+      <RaCard :padding="0" class="overflow-hidden">
+        <div class="flex items-center justify-between border-b border-(--line-1) py-4 px-6">
           <div class="flex items-center gap-2.5">
-            <span class="flex size-7 items-center justify-center rounded-full bg-(--brand-blue-soft) text-primary">
+            <span class="flex size-8 items-center justify-center rounded-(--ra-md) bg-(--brand-blue-soft) text-primary">
               <UsersIcon :size="14" />
             </span>
-            <h3 class="m-0 text-lg font-bold text-(--fg-1)">Users</h3>
+            <h3 class="m-0 text-base font-semibold text-(--fg-1)">Users</h3>
           </div>
           <Button variant="ghost" size="sm" @click="router.push('/users')">
             View all <ArrowRight :size="14" />
@@ -235,35 +263,25 @@ const activity = computed<IdentityAuditLogItem[]>(() => activityData.value?.item
     </div>
 
     <RaCard v-if="hasPermission('identity:audit:view')" :padding="0" class="overflow-hidden">
-      <div class="flex items-center justify-between border-b border-(--line-1) py-5 px-6">
+      <div class="flex items-center justify-between border-b border-(--line-1) py-4 px-6">
         <div class="flex items-center gap-2.5">
-          <span class="flex size-7 items-center justify-center rounded-full bg-(--brand-blue-soft) text-primary">
+          <span class="flex size-8 items-center justify-center rounded-(--ra-md) bg-(--brand-blue-soft) text-primary">
             <History :size="14" />
           </span>
-          <h3 class="m-0 text-lg font-bold text-(--fg-1)">Recent Activity</h3>
+          <h3 class="m-0 text-base font-semibold text-(--fg-1)">Recent Activity</h3>
         </div>
         <Button variant="ghost" size="sm" @click="router.push('/audit')">
           View all <ArrowRight :size="14" />
         </Button>
       </div>
 
-      <p v-if="activityLoading" class="p-6 text-center text-[13px] text-(--fg-3)">Loading…</p>
-      <p v-else-if="activityError" class="p-6 text-center text-[13px] text-(--danger)">{{ activityError }}</p>
-      <p v-else-if="activity.length === 0" class="p-6 text-center text-[13px] text-(--fg-3)">No activity recorded yet.</p>
-      <ul v-else class="m-0 flex list-none flex-col p-0">
-        <li
-          v-for="entry in activity"
-          :key="entry.id"
-          class="flex items-start justify-between gap-3 border-b border-(--line-1) py-3 px-6 last:border-b-0 max-md:flex-col"
-        >
-          <div class="flex flex-wrap items-center gap-1.5 text-sm text-(--fg-1)">
-            <span class="font-semibold">{{ entry.action }}</span> — {{ entry.entityType }}
-            <UserPreviewPopover v-if="entry.userId" :user-id="entry.userId" />
-            <span v-else class="text-xs text-(--fg-4)">System</span>
-          </div>
-          <span class="shrink-0 text-xs text-(--fg-3)">{{ formatDate(entry.occurredAt) }}</span>
-        </li>
-      </ul>
+      <ActivityTimeline
+        :items="activity"
+        :loading="activityLoading"
+        :error="activityError"
+        :expandable="false"
+        compact
+      />
     </RaCard>
   </div>
 </template>

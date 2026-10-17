@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import * as Blockly from 'blockly/core'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { generateCode, registerRobotBlocks, robotToolbox, setAvailableSensors } from '../blocks/robot-blocks'
+import { generateCode, registerRobotBlocks, robotToolbox, setSceneRobots, type BlockRobot } from '../blocks/robot-blocks'
 import type { RobotCapability } from '../robots/types'
 
 const props = defineProps<{
   /** Blockly workspace JSON. Read once on mount; later changes flow out through `change`. */
   program: object | null
   capability: RobotCapability
+  /** The scene's robots, the main one first. Defaults to just `capability`, as the main robot. */
+  robots?: BlockRobot[]
   hiddenSensors?: string[]
   readonly?: boolean
   /** The block to highlight while a program runs. */
@@ -48,10 +50,11 @@ function theme(dark: boolean): Blockly.Theme {
 onMounted(() => {
   if (!host.value) return
   registerRobotBlocks()
-  setAvailableSensors(props.capability, props.hiddenSensors ?? [])
+  const robots = props.robots?.length ? props.robots : [{ id: 'robot', capability: props.capability }]
+  setSceneRobots(robots, props.hiddenSensors ?? [])
 
   workspace = Blockly.inject(host.value, {
-    toolbox: props.readonly ? undefined : (props.toolbox ?? robotToolbox()),
+    toolbox: props.readonly ? undefined : (props.toolbox ?? robotToolbox(robots.map((robot) => robot.capability.api), robots.length > 1)),
     readOnly: props.readonly ?? false,
     theme: theme(props.dark ?? false),
     trashcan: !props.readonly,

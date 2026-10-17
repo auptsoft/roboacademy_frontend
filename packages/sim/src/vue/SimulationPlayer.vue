@@ -1,34 +1,50 @@
 <script setup lang="ts">
-import { Maximize2, Minimize2, Play, RotateCcw, Square, Send } from 'lucide-vue-next'
+import { Maximize2, Minimize2, Play, RotateCcw, Route, Square, Send } from 'lucide-vue-next'
 import { RaButton, RaChip } from '@roboacademy/ui'
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import { ArenaRenderer } from '../engine/renderer'
 import { initPhysics } from '../engine/physics'
 import { Simulation } from '../engine/simulation'
 import type { ObjectiveSet, ObjectiveStatus } from '../grading/types'
-import { getCapability } from '../robots'
+import { getCapability, type RobotApi, type RobotCapability } from '../robots'
 import { createLuaWorker, createProgramWorker } from '../runtime/create-worker'
 import { createPythonWorker, prewarmPythonWorker, releasePythonWorker } from '../runtime/python-worker-pool'
 import { RunController, type RunResult } from '../runtime/run-controller'
-import type { SceneDefinition } from '../scene/types'
+import { sceneRobots, type SceneDefinition } from '../scene/types'
 import { isSourceProgram, lineFromHighlight, type ProgramLanguage } from '../languages/types'
 import BlocksEditor from './BlocksEditor.vue'
 import CodeEditor from './CodeEditor.vue'
 
 /** New text programs start from these, so the robot API is one keystroke away. */
-const STARTERS: Record<'javascript' | 'python' | 'lua', string> = {
-  javascript: `// Type "robot." to see everything the robot can do.
+const STARTERS: Record<RobotApi, Record<'javascript' | 'python' | 'lua', string>> = {
+  wheeled: {
+    javascript: `// Type "robot." to see everything the robot can do.
 robot.move(20);
 robot.turnLeft(90);
 `,
-  python: `# Type "robot." to see everything the robot can do.
+    python: `# Type "robot." to see everything the robot can do.
 robot.move(20)
 robot.turn_left(90)
 `,
-  lua: `-- Type "robot." to see everything the robot can do.
+    lua: `-- Type "robot." to see everything the robot can do.
 robot.move(20)
 robot.turn_left(90)
 `,
+  },
+  arm: {
+    javascript: `// Type "robot." to see everything the arm can do.
+robot.reach(20, 5);
+robot.closeGripper();
+`,
+    python: `# Type "robot." to see everything the arm can do.
+robot.reach(20, 5)
+robot.close_gripper()
+`,
+    lua: `-- Type "robot." to see everything the arm can do.
+robot.reach(20, 5)
+robot.close_gripper()
+`,
+  },
 }
 
 export type RunMode = 'practice' | 'graded'
@@ -67,6 +83,12 @@ const emit = defineEmits<{
 }>()
 
 const capability = computed(() => getCapability(props.scene.robot.type))
+/** Every robot in the scene, the main one first; empty if any has an unknown type. */
+const robots = computed(() => {
+  const list = sceneRobots(props.scene).map((robot) => ({ id: robot.id, capability: getCapability(robot.type) }))
+  return list.every((robot) => robot.capability) ? (list as { id: string; capability: RobotCapability }[]) : []
+})
+const preludeRobots = computed(() => robots.value.map(({ id, capability }) => ({ id, api: capability.api })))
 const wrapper = ref<HTMLElement | null>(null)
 const stage = ref<HTMLElement | null>(null)
 const editor = ref<InstanceType<typeof BlocksEditor> | null>(null)
@@ -74,7 +96,12 @@ const codeEditor = ref<InstanceType<typeof CodeEditor> | null>(null)
 const language = computed<ProgramLanguage>(() => props.language ?? 'blocks')
 const initialSource = computed(() => {
   if (isSourceProgram(props.program)) return props.program.source
-  return language.value === 'blocks' ? '' : STARTERS[language.value]
+  if (language.value === 'blocks') return ''
+  const starter = STARTERS[capability.value?.api ?? 'wheeled'][language.value]
+  const others = robots.value.slice(1).map((robot) => `robots.${robot.id}`)
+  if (!others.length) return starter
+  const comment = language.value === 'javascript' ? '//' : language.value === 'python' ? '#' : '--'
+  return `${comment} The other robots: ${others.join(', ')}. Use .start to keep a robot going while the next line runs.\n${starter}`
 })
 /** True while a run waits for its runtime to start (Python loads Pyodide first). */
 const starting = ref(false)
@@ -92,6 +119,26 @@ const result = shallowRef<RunResult | null>(null)
 const isFullscreen = ref(false)
 const narrowTab = ref<'program' | 'robot'>('program')
 const dark = ref(false)
+
+/** Whether robots' paths are drawn on the floor. A per-viewer preference, so it's remembered locally. */
+const PATH_KEY = 'roboacademy.sim.showPath'
+function readShowPath(): boolean {
+  try {
+    return localStorage.getItem(PATH_KEY) !== 'false'
+  } catch {
+    return true
+  }
+}
+const showPath = ref(readShowPath())
+function toggleShowPath(): void {
+  showPath.value = !showPath.value
+  renderer?.setTrailsVisible(showPath.value)
+  try {
+    localStorage.setItem(PATH_KEY, String(showPath.value))
+  } catch {
+    // Storage blocked: the choice lasts until the page closes.
+  }
+}
 
 /**
  * The editor's share of the body's width when the panes sit side by side. Learners drag the
@@ -216,7 +263,7 @@ async function prepareProgram(): Promise<{ code: string; readable: string; progr
   if (language.value === 'python' || language.value === 'lua') return { code: source, readable: source, program: { source } }
   // Babel is several megabytes, so it's loaded the first time a JavaScript program runs.
   const { compileJavaScript } = await import('../languages/javascript/compile')
-  const compiled = compileJavaScript(source)
+  const compiled = compileJavaScript(source, preludeRobots.value)
   if (!compiled.ok) {
     compileError.value = { message: compiled.message, line: compiled.line }
     result.value = null
@@ -312,11 +359,12 @@ onMounted(async () => {
   themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
   document.addEventListener('fullscreenchange', onFullscreenChange)
   try {
-    if (!capability.value) throw new Error('Unknown robot type')
+    if (!capability.value || !robots.value.length) throw new Error('Unknown robot type')
     await initPhysics()
     if (!stage.value) return
     const background = getComputedStyle(document.documentElement).getPropertyValue('--bg-3').trim()
     renderer = new ArenaRenderer(stage.value, props.scene, background ? { background } : {})
+    renderer.setTrailsVisible(showPath.value)
     freshSimulation()
     status.value = 'idle'
     frameHandle = requestAnimationFrame(loop)
@@ -403,6 +451,15 @@ defineExpose({ reset, stop })
         <button role="tab" :aria-selected="narrowTab === 'program'" @click="narrowTab = 'program'">Program</button>
         <button role="tab" :aria-selected="narrowTab === 'robot'" @click="narrowTab = 'robot'">Robot</button>
       </div>
+      <RaButton
+        variant="ghost"
+        :aria-pressed="showPath"
+        :title="showPath ? 'Hide the robots\' paths' : 'Show the robots\' paths'"
+        @click="toggleShowPath"
+      >
+        <template #icon><Route :size="14" /></template>
+        <span class="sim-player__label">{{ showPath ? 'Hide path' : 'Show path' }}</span>
+      </RaButton>
       <RaButton variant="ghost" @click="toggleFullscreen">
         <template #icon>
           <Minimize2 v-if="isFullscreen" :size="14" />
@@ -425,6 +482,7 @@ defineExpose({ reset, stop })
           ref="editor"
           :program="program ?? null"
           :capability="capability"
+          :robots="robots"
           :hidden-sensors="scene.hiddenSensors"
           :readonly="status === 'running'"
           :highlight-id="highlightId"
@@ -436,6 +494,7 @@ defineExpose({ reset, stop })
           ref="codeEditor"
           :source="initialSource"
           :language="language"
+          :robots="preludeRobots"
           :readonly="status === 'running'"
           :running-line="status === 'running' ? runningLine : null"
           :error-line="status === 'running' ? null : errorLine"

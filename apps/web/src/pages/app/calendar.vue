@@ -25,6 +25,8 @@ const cursor = ref(new Date(today.getFullYear(), today.getMonth(), 1))
 const view = ref<View>(window.matchMedia('(max-width: 767px)').matches ? 'agenda' : 'month')
 const items = ref<CalendarItem[]>([])
 const status = ref<'loading' | 'idle' | 'error'>('loading')
+// Mobile month view shows dots per day; tapping a day lists its items below the grid.
+const selectedDay = ref(new Date(today.getFullYear(), today.getMonth(), today.getDate()))
 
 const monthLabel = computed(() => cursor.value.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }))
 
@@ -54,6 +56,11 @@ async function load() {
 watch(cursor, load)
 onMounted(load)
 
+watch(cursor, c => {
+  const inMonth = c.getFullYear() === today.getFullYear() && c.getMonth() === today.getMonth()
+  selectedDay.value = inMonth ? new Date(today.getFullYear(), today.getMonth(), today.getDate()) : c
+})
+
 function shiftMonth(delta: number) {
   cursor.value = new Date(cursor.value.getFullYear(), cursor.value.getMonth() + delta, 1)
 }
@@ -65,6 +72,8 @@ function goToday() {
 function itemsOn(day: Date): CalendarItem[] {
   return items.value.filter(i => isSameDay(new Date(i.startsAt), day))
 }
+
+const selectedItems = computed(() => itemsOn(selectedDay.value))
 
 const agenda = computed(() => {
   const inMonth = items.value.filter(i => new Date(i.startsAt).getMonth() === cursor.value.getMonth())
@@ -129,33 +138,61 @@ function open(item: CalendarItem) {
       </div>
 
       <!-- Month grid -->
-      <div v-else-if="view === 'month'" class="overflow-x-auto">
-        <div class="grid grid-cols-7 min-w-[640px] border-t border-l border-(--line-1)">
-          <div v-for="d in WEEKDAYS" :key="d" class="px-2 py-2 text-xs font-semibold text-(--fg-3) border-r border-b border-(--line-1)">{{ d }}</div>
+      <div v-else-if="view === 'month'">
+        <div class="grid grid-cols-7 border-t border-l border-(--line-1)">
+          <div v-for="d in WEEKDAYS" :key="d" class="px-2 py-2 text-xs font-semibold text-(--fg-3) border-r border-b border-(--line-1) truncate max-md:px-0 max-md:text-center max-md:text-[11px]">{{ d }}</div>
           <div
             v-for="day in gridDays"
             :key="day.toISOString()"
-            class="min-h-[112px] p-1.5 border-r border-b border-(--line-1) flex flex-col gap-1"
-            :class="day.getMonth() === cursor.getMonth() ? '' : 'bg-(--bg-2)'"
+            class="min-h-[112px] p-1.5 border-r border-b border-(--line-1) flex flex-col gap-1 min-w-0 max-md:min-h-12 max-md:p-1 max-md:items-center max-md:cursor-pointer"
+            :class="isSameDay(day, selectedDay) ? 'max-md:bg-(--bg-3)' : day.getMonth() === cursor.getMonth() ? '' : 'bg-(--bg-2)'"
+            @click="selectedDay = day"
           >
             <span
-              class="self-start w-6 h-6 rounded-full flex items-center justify-center text-xs"
+              class="self-start w-6 h-6 rounded-full max-md:self-center flex items-center justify-center text-xs"
               :class="isSameDay(day, today) ? 'bg-(--brand-blue) text-white font-semibold' : day.getMonth() === cursor.getMonth() ? 'text-(--fg-2)' : 'text-(--fg-4)'"
             >{{ day.getDate() }}</span>
             <button
               v-for="item in itemsOn(day).slice(0, 3)"
               :key="item.kind + item.id"
-              class="w-full text-left px-1.5 py-1 rounded-(--ra-sm) border-0 cursor-pointer text-[11px] leading-tight truncate hover:opacity-80"
+              class="w-full text-left px-1.5 py-1 rounded-(--ra-sm) border-0 cursor-pointer text-[11px] leading-tight truncate hover:opacity-80 max-md:hidden"
               :class="[KIND_META[item.kind].chip, { 'line-through opacity-60': item.status === 'Cancelled', 'font-semibold': item.attending }]"
               :title="`${item.title} · ${formatRange(item.startsAt, item.endsAt)}`"
               @click="open(item)"
             >{{ formatTime(item.startsAt) }} {{ item.title }}</button>
             <button
               v-if="itemsOn(day).length > 3"
-              class="self-start bg-transparent border-0 p-0 px-1.5 cursor-pointer text-[11px] font-medium text-(--link) hover:underline"
+              class="self-start bg-transparent border-0 p-0 px-1.5 cursor-pointer text-[11px] font-medium text-(--link) hover:underline max-md:hidden"
               @click="view = 'agenda'"
             >+{{ itemsOn(day).length - 3 }} more</button>
+            <div v-if="itemsOn(day).length" class="hidden max-md:flex gap-0.5">
+              <span v-for="item in itemsOn(day).slice(0, 3)" :key="item.kind + item.id" class="w-1.5 h-1.5 rounded-full" :class="KIND_META[item.kind].dot" />
+            </div>
           </div>
+        </div>
+
+        <!-- Selected day (mobile) -->
+        <div class="hidden max-md:flex flex-col gap-3 mt-4">
+          <div class="text-sm font-medium" :class="isSameDay(selectedDay, today) ? 'text-(--brand-blue)' : 'text-(--heading)'">
+            {{ selectedDay.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' }) }}
+          </div>
+          <p v-if="!selectedItems.length" class="m-0 text-[13px] text-(--fg-3)">Nothing scheduled.</p>
+          <button
+            v-for="item in selectedItems"
+            :key="item.kind + item.id"
+            class="flex items-start gap-3 w-full text-left bg-transparent border-0 p-2 -mx-2 rounded-(--ra-md) cursor-pointer hover:bg-(--bg-3)"
+            @click="open(item)"
+          >
+            <span class="mt-1.5 w-2 h-2 shrink-0 rounded-full" :class="KIND_META[item.kind].dot" />
+            <span class="flex flex-col gap-0.5 min-w-0">
+              <span class="text-sm font-medium text-(--heading)" :class="{ 'line-through opacity-60': item.status === 'Cancelled' }">{{ item.title }}</span>
+              <span class="text-[13px] text-(--fg-3)">
+                {{ formatRange(item.startsAt, item.endsAt) }}<template v-if="item.location"> · {{ item.location }}</template>
+                <template v-if="item.kind === 'event' && item.attending"> · Going</template>
+                <template v-if="item.status === 'Cancelled'"> · Cancelled</template>
+              </span>
+            </span>
+          </button>
         </div>
       </div>
 

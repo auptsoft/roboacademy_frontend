@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject } from 'vue'
+import { computed, inject, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { RaCard, RaButton } from '@roboacademy/ui'
 import { Loader2, AlertTriangle } from 'lucide-vue-next'
@@ -15,16 +15,24 @@ import { getMyCalendar, type CalendarItem } from '@/api/scheduling'
 import CourseCatalogCard from '@/components/explore/CourseCatalogCard.vue'
 import { getCurrentUser } from '@/store/auth'
 import { useCachedQuery } from '@/composables/useCachedQuery'
-import { brandingKey } from '@/branding'
+import { brandingKey, featureConfirmed } from '@/branding'
 import CourseTile from '@/components/courses/CourseTile.vue'
 import { enrolledTileProps, enrolledPathTileProps } from '@/components/courses/course-tile'
 import StatCard from '@/components/dashboard/StatCard.vue'
+import LevelCard from '@/components/gamification/LevelCard.vue'
+import { useAchievements } from '@/composables/useAchievements'
 import HeroCarousel, { type HeroSlide } from '@/components/dashboard/HeroCarousel.vue'
 import DataTable, { type DataTableColumn } from '@/components/dashboard/DataTable.vue'
 
 const router = useRouter()
 const user = getCurrentUser()
 const branding = inject(brandingKey, null)
+
+// Level and badges, on plans with gamification. Shared with the toasts, so loading it here also
+// sets what a later badge is compared against.
+const { summary: gamification, refresh: refreshGamification } = useAchievements()
+const showGamification = computed(() => featureConfirmed(branding?.value, 'gamification'))
+watch(showGamification, (on) => { if (on) void refreshGamification() }, { immediate: true })
 
 const firstName = computed(() => user?.fullName?.trim().split(/\s+/)[0] ?? 'there')
 
@@ -258,7 +266,7 @@ const heroSlides = computed<HeroSlide[]>(() => {
     <h1 class="m-0 text-[28px] font-semibold text-(--heading) tracking-[-0.01em] max-sm:text-2xl">Welcome, {{ firstName }}</h1>
 
     <!-- KPI row -->
-    <div class="grid gap-6 grid-cols-3 max-lg:grid-cols-2 max-md:grid-cols-1 -mt-2">
+    <div class="grid gap-6 grid-cols-3 max-lg:grid-cols-2 max-md:gap-3 -mt-2">
       <StatCard
         label="Active Courses"
         :value="enrolledStatus === 'loading' ? '—' : String(activeCoursesCount)"
@@ -272,6 +280,7 @@ const heroSlides = computed<HeroSlide[]>(() => {
         caption="Completed lessons"
         :secondary-value="enrolledStatus === 'loading' ? '—' : String(totalLessonsCount)"
         secondary-caption="Total across your courses"
+        class="max-md:col-span-2 max-md:order-last"
       />
       <StatCard
         variant="navy"
@@ -282,29 +291,11 @@ const heroSlides = computed<HeroSlide[]>(() => {
       />
     </div>
 
+    <LevelCard v-if="showGamification && gamification" :summary="gamification" class="-mt-3" />
+
     <!-- Hero carousel -->
     <HeroCarousel :slides="heroSlides" />
 
-    <!-- Recent activity -->
-    <section class="bg-(--surface) rounded-(--ra-xl) shadow-(--surface-shadow) p-6 max-sm:p-4">
-      <h2 class="m-0 mb-6 text-[22px] font-medium text-(--heading)">Recent Activity</h2>
-      <div v-if="activityLoading" class="flex items-center gap-2 text-[13px] text-(--fg-3)">
-        <Loader2 :size="16" class="animate-spin" /> Loading…
-      </div>
-      <p v-else-if="!activity.length" class="m-0 text-[13px] text-(--fg-3)">No activity yet — complete a lesson to see it here.</p>
-      <DataTable v-else :columns="activityColumns" :rows="activity" :row-key="row => row.id">
-        <template #cell-date="{ row }">{{ formatShortDate(row.occurredAt) }}</template>
-        <template #cell-text="{ row }"><span class="line-clamp-1">{{ row.text }}</span></template>
-        <template #cell-status="{ row }">
-          <span class="inline-flex items-center gap-1.5 text-[13px] font-medium" :class="statusTone[row.status]">
-            <span class="w-1.5 h-1.5 rounded-full bg-current" />{{ row.status }}
-          </span>
-        </template>
-        <template #cell-action="{ row }">
-          <button class="bg-transparent border-0 p-0 cursor-pointer text-[13px] font-medium text-(--link) hover:underline" @click="router.push(row.link)">View</button>
-        </template>
-      </DataTable>
-    </section>
 
     <!-- Enrolled courses -->
     <section class="bg-(--surface) rounded-(--ra-xl) shadow-(--surface-shadow) p-6 max-sm:p-4">
@@ -323,7 +314,7 @@ const heroSlides = computed<HeroSlide[]>(() => {
       <p v-else-if="!enrolledCourses.length" class="m-0 text-[13px] text-(--fg-3)">
         No enrolled courses yet — <button class="bg-transparent border-0 p-0 cursor-pointer text-(--link) underline" @click="router.push('/app/explore')">explore the catalog</button> to get started.
       </p>
-      <div v-else class="grid gap-x-6 gap-y-9 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div v-else class="grid gap-x-6 gap-y-9 max-sm:gap-y-0 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         <CourseTile
           v-for="c in enrolledCourses.slice(0, 4)"
           :key="c.enrolmentId"
@@ -344,7 +335,7 @@ const heroSlides = computed<HeroSlide[]>(() => {
         <p class="m-0 text-[13px] text-(--fg-3)">Couldn't load your learning paths.</p>
         <RaButton variant="secondary" @click="loadEnrolledPaths">Try again</RaButton>
       </div>
-      <div v-else class="grid gap-x-6 gap-y-9 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div v-else class="grid gap-x-6 gap-y-9 max-sm:gap-y-0 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         <CourseTile
           v-for="p in enrolledPaths.slice(0, 4)"
           :key="p.pathEnrolmentId"
@@ -393,7 +384,7 @@ const heroSlides = computed<HeroSlide[]>(() => {
         <p v-else-if="!suggestedPaths.length" class="m-0 text-[13px] text-(--fg-3)">
           No suggestions yet — <button class="bg-transparent border-0 p-0 cursor-pointer text-(--link) underline" @click="router.push('/app/explore?tab=paths')">explore learning paths</button> to find your next one.
         </p>
-        <div v-else class="grid gap-x-6 gap-y-9 grid-cols-1 sm:grid-cols-2">
+        <div v-else class="grid gap-x-6 gap-y-9 max-sm:gap-y-0 grid-cols-1 sm:grid-cols-2">
           <PathCatalogCard
             v-for="p in suggestedPaths.slice(0, 2)"
             :key="p.id"
@@ -420,9 +411,30 @@ const heroSlides = computed<HeroSlide[]>(() => {
       <p v-else-if="!recommendedCourses.length" class="m-0 text-[13px] text-(--fg-3)">
         No recommendations yet — <button class="bg-transparent border-0 p-0 cursor-pointer text-(--link) underline" @click="router.push('/app/explore')">explore the catalog</button> to find your next course.
       </p>
-      <div v-else class="grid gap-x-6 gap-y-9 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div v-else class="grid gap-x-6 gap-y-9 max-sm:gap-y-0 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         <CourseCatalogCard v-for="course in recommendedCourses" :key="course.id" v-bind="course" />
       </div>
+    </section>
+
+    <!-- Recent activity -->
+    <section class="bg-(--surface) rounded-(--ra-xl) shadow-(--surface-shadow) p-6 max-sm:p-4">
+      <h2 class="m-0 mb-6 text-[22px] font-medium text-(--heading)">Recent Activity</h2>
+      <div v-if="activityLoading" class="flex items-center gap-2 text-[13px] text-(--fg-3)">
+        <Loader2 :size="16" class="animate-spin" /> Loading…
+      </div>
+      <p v-else-if="!activity.length" class="m-0 text-[13px] text-(--fg-3)">No activity yet — complete a lesson to see it here.</p>
+      <DataTable v-else :columns="activityColumns" :rows="activity" :row-key="row => row.id">
+        <template #cell-date="{ row }">{{ formatShortDate(row.occurredAt) }}</template>
+        <template #cell-text="{ row }"><span class="line-clamp-1">{{ row.text }}</span></template>
+        <template #cell-status="{ row }">
+          <span class="inline-flex items-center gap-1.5 text-[13px] font-medium" :class="statusTone[row.status]">
+            <span class="w-1.5 h-1.5 rounded-full bg-current" />{{ row.status }}
+          </span>
+        </template>
+        <template #cell-action="{ row }">
+          <button class="bg-transparent border-0 p-0 cursor-pointer text-[13px] font-medium text-(--link) hover:underline" @click="router.push(row.link)">View</button>
+        </template>
+      </DataTable>
     </section>
   </div>
 </template>

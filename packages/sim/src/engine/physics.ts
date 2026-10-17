@@ -1,8 +1,8 @@
 import RAPIER from '@dimforge/rapier3d-compat'
-import type { SceneDefinition, Vec3 } from '../scene/types'
-import { DIFF_DRIVE_DISTANCE_RANGE, DIFF_DRIVE_MAX_SPEED, DIFF_DRIVE_WHEEL_BASE } from '../robots/diff-drive'
-import { getCapability } from '../robots'
-import { DEG_TO_RAD, headingFromYaw, yawFromQuaternion, yawQuaternion } from './geometry'
+import type { RobotPlacement, SceneDefinition, Vec3 } from '../scene/types'
+import type { RobotCapability } from '../robots'
+import { DEG_TO_RAD, yawQuaternion } from './geometry'
+import type { RobotDriver, RobotInstance } from './robots'
 
 export const PHYSICS_STEP_SEC = 1 / 60
 
@@ -24,6 +24,20 @@ export interface RobotPose {
   heading: number
 }
 
+/** A robot to put in the world. */
+export interface RobotSetup {
+  id: string
+  placement: RobotPlacement
+  capability: RobotCapability
+  driver: RobotDriver
+}
+
+/** Something a robot bumped into: an obstacle, a prop, or another robot. */
+export interface Collision {
+  robot: string
+  name: string
+}
+
 export interface BodyTransform {
   position: Vec3
   rotation: { x: number; y: number; z: number; w: number }
@@ -36,20 +50,16 @@ export interface BodyTransform {
 export class PhysicsWorld {
   private readonly world: RAPIER.World
   private readonly events = new RAPIER.EventQueue(true)
-  private readonly robotBody: RAPIER.RigidBody
-  private readonly robotCollider: RAPIER.Collider
-  private readonly robotHalfLength: number
-  private readonly robotHeight: number
+  /** The scene's robots by id, in scene order. */
+  readonly robots = new Map<string, RobotInstance>()
+  /** Robot colliders, mapped to the robot they belong to. */
+  private readonly robotColliders = new Map<number, string>()
   private readonly props = new Map<string, RAPIER.RigidBody>()
   /** Colliders the robot can bump into, mapped to a name for the run summary. */
   private readonly obstacleNames = new Map<number, string>()
-  private wheels = { left: 0, right: 0 }
-  private collisions: { name: string }[] = []
+  private collisions: Collision[] = []
 
-  constructor(scene: SceneDefinition) {
-    const capability = getCapability(scene.robot.type)
-    if (!capability) throw new Error(`Unknown robot type "${scene.robot.type}"`)
-
+  constructor(scene: SceneDefinition, robots: RobotSetup[]) {
     this.world = new RAPIER.World({ x: 0, y: -9.81, z: 0 })
     this.world.timestep = PHYSICS_STEP_SEC
 
@@ -86,7 +96,12 @@ export class PhysicsWorld {
     for (const prop of scene.props) {
       const halfHeight = prop.shape === 'sphere' ? prop.size.x : prop.size.y / 2
       const body = this.world.createRigidBody(
-        RAPIER.RigidBodyDesc.dynamic().setTranslation(prop.x, halfHeight, prop.z).setLinearDamping(0.5).setAngularDamping(0.5),
+        RAPIER.RigidBodyDesc.dynamic()
+          .setTranslation(prop.x, halfHeight, prop.z)
+          .setLinearDamping(0.5)
+          .setAngularDamping(0.5)
+          // A fast robot arm could otherwise sweep straight through a small prop in one step.
+          .setCcdEnabled(true),
       )
       const desc =
         prop.shape === 'box'
@@ -99,80 +114,41 @@ export class PhysicsWorld {
       this.obstacleNames.set(collider.handle, `prop ${prop.id}`)
     }
 
-    const { width: robotWidth, length, height } = capability.size
-    this.robotHalfLength = length / 2
-    this.robotHeight = height
-    const start = scene.robot.start
-    this.robotBody = this.world.createRigidBody(
-      RAPIER.RigidBodyDesc.dynamic()
-        .setTranslation(start.x, height / 2 + 0.002, start.z)
-        .setRotation(yawQuaternion(start.headingDeg * DEG_TO_RAD))
-        // The robot only ever turns about Y: no tipping over, however hard it hits a wall.
-        .enabledRotations(false, true, false)
-        .setCcdEnabled(true),
-    )
-    this.robotCollider = this.world.createCollider(
-      RAPIER.ColliderDesc.cuboid(length / 2, height / 2, robotWidth / 2)
-        .setMass(1)
-        // The robot's velocity is set directly each step, so it needs no friction - and floor
-        // friction would eat most of a slow final approach, stopping it short of its target.
-        .setFriction(0)
-        .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min)
-        .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS),
-      this.robotBody,
-    )
+    for (const { id, placement, capability, driver } of robots) {
+      const robot = driver.create({ world: this.world, scene, placement, capability, props: this.props })
+      this.robots.set(id, robot)
+      for (const collider of robot.colliders) this.robotColliders.set(collider.handle, id)
+    }
 
     // Ray casts only see colliders once the world has stepped. Step once with the robot at rest,
     // so a program that reads its sensors before moving gets real readings.
     this.world.step()
   }
 
-  /** Wheel speeds as a fraction of top speed, -1 to 1. */
-  setWheels(left: number, right: number): void {
-    this.wheels = { left, right }
-  }
-
-  getWheels(): { left: number; right: number } {
-    return { ...this.wheels }
-  }
-
   step(): void {
-    // Differential drive: wheel speeds set the robot's forward and turning speed directly, which
-    // is all a beginner's robot needs. Walls and props still stop it, because the body is dynamic.
-    const left = this.wheels.left * DIFF_DRIVE_MAX_SPEED
-    const right = this.wheels.right * DIFF_DRIVE_MAX_SPEED
-    const forward = (left + right) / 2
-    const turnRate = (right - left) / DIFF_DRIVE_WHEEL_BASE
-    const yaw = yawFromQuaternion(this.robotBody.rotation())
-    const current = this.robotBody.linvel()
-    this.robotBody.setLinvel({ x: Math.cos(yaw) * forward, y: current.y, z: -Math.sin(yaw) * forward }, true)
-    this.robotBody.setAngvel({ x: 0, y: turnRate, z: 0 }, true)
-
+    for (const robot of this.robots.values()) robot.beforeStep()
     this.world.step(this.events)
 
     this.events.drainCollisionEvents((handle1, handle2, started) => {
       if (!started) return
-      const other = handle1 === this.robotCollider.handle ? handle2 : handle2 === this.robotCollider.handle ? handle1 : null
-      if (other === null) return
-      const name = this.obstacleNames.get(other)
-      if (name) this.collisions.push({ name })
+      const robot1 = this.robotColliders.get(handle1)
+      const robot2 = this.robotColliders.get(handle2)
+      if (robot1 && robot2) {
+        // Two robots meeting is one collision, counted against the first.
+        if (robot1 !== robot2) this.collisions.push({ robot: robot1, name: `robot ${robot2}` })
+        return
+      }
+      const robot = robot1 ?? robot2
+      const name = this.obstacleNames.get(robot1 ? handle2 : handle1)
+      if (robot && name) this.collisions.push({ robot, name })
     })
   }
 
   /** Collisions since the last call. */
-  drainCollisions(): { name: string }[] {
+  drainCollisions(): Collision[] {
     const drained = this.collisions
     this.collisions = []
     return drained
-  }
-
-  robotPose(): RobotPose {
-    const t = this.robotBody.translation()
-    return { x: t.x, z: t.z, heading: headingFromYaw(yawFromQuaternion(this.robotBody.rotation())) }
-  }
-
-  robotTransform(): BodyTransform {
-    return { position: { ...this.robotBody.translation() }, rotation: { ...this.robotBody.rotation() } }
   }
 
   propTransforms(): Map<string, BodyTransform> {
@@ -181,28 +157,6 @@ export class PhysicsWorld {
       result.set(id, { position: { ...body.translation() }, rotation: { ...body.rotation() } })
     }
     return result
-  }
-
-  /** Distance from the front of the robot to the nearest obstacle ahead, capped at the sensor range. */
-  frontDistance(): number {
-    const pose = this.robotPose()
-    const yaw = pose.heading * DEG_TO_RAD
-    const dir = { x: Math.cos(yaw), y: 0, z: -Math.sin(yaw) }
-    const origin = {
-      x: pose.x + dir.x * this.robotHalfLength,
-      y: this.robotHeight / 2,
-      z: pose.z + dir.z * this.robotHalfLength,
-    }
-    const hit = this.world.castRay(
-      new RAPIER.Ray(origin, dir),
-      DIFF_DRIVE_DISTANCE_RANGE,
-      true,
-      undefined,
-      undefined,
-      this.robotCollider,
-      this.robotBody,
-    )
-    return hit ? hit.timeOfImpact : DIFF_DRIVE_DISTANCE_RANGE
   }
 
   dispose(): void {

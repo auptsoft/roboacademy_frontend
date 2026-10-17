@@ -1,7 +1,9 @@
-import type { ApiEntry } from '../javascript/api'
+import type { RobotApi } from '../../robots/types'
+import { penEntries, withStart, type ApiEntry } from '../javascript/api'
+import { ROBOT_PY_API } from '../python/api'
 
-/** The `robot` table Lua programs use (defined in prelude.ts), for autocomplete. */
-export const ROBOT_LUA_API: ApiEntry[] = [
+/** The `robot` tables Lua programs use (defined in prelude.ts), for autocomplete. */
+const WHEELED_LUA_API: ApiEntry[] = [
   { name: 'move', signature: 'move(cm, speed)', info: 'Drive forwards (or backwards with a negative distance) and stop. Speed defaults to 50.', apply: 'move(20)' },
   { name: 'turn_left', signature: 'turn_left(degrees, speed)', info: 'Turn left on the spot.', apply: 'turn_left(90)' },
   { name: 'turn_right', signature: 'turn_right(degrees, speed)', info: 'Turn right on the spot.', apply: 'turn_right(90)' },
@@ -16,3 +18,16 @@ export const ROBOT_LUA_API: ApiEntry[] = [
   { name: 'z', signature: 'z()', info: 'The robot\'s z position, in cm.', apply: 'z()' },
   { name: 'heading', signature: 'heading()', info: 'Which way the robot faces, in degrees. 0 is along +x; turning left increases it.', apply: 'heading()' },
 ]
+
+/** The arm's Lua names match Python's; only the optional arguments read differently. */
+const ARM_LUA_API: ApiEntry[] = ROBOT_PY_API.arm.map((entry) => ({
+  ...entry,
+  signature: entry.signature.replace(/=\d+/g, '').replace('height_cm', 'height'),
+  info: entry.info.replace(/^True/, 'true'),
+}))
+
+export const ROBOT_LUA_API: Record<RobotApi, ApiEntry[]> = {
+  wheeled: withStart([...WHEELED_LUA_API, ...penEntries({ down: 'pen_down', up: 'pen_up', color: 'pen_color' }, '"')], ['move', 'turn_left', 'turn_right', 'drive', 'set_wheels', 'stop'], 'wait_until_done', 'move(20)'),
+  // Derived from Python's, which already has `start` and `wait_until_done`.
+  arm: ARM_LUA_API,
+}

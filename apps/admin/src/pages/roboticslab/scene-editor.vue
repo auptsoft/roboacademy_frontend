@@ -9,6 +9,12 @@ import {
   SUPPORTED_LANGUAGES,
   emptyScene,
   getCapability,
+  listCapabilities,
+  sceneRobots,
+  shapePoints,
+  DEFAULT_COVERAGE,
+  PEN_COLORS,
+  type ShapePreset,
   type ProgramLanguage,
   validateObjectives,
   validateScene,
@@ -54,8 +60,43 @@ const objectivesJson = ref('')
 const editingJson = ref(false)
 const jsonError = ref('')
 
+const robotTypes = listCapabilities()
 const capability = computed(() => getCapability(scene.robot.type))
-const hideableSensors = computed(() => capability.value?.sensors.filter((s) => s.hideable) ?? [])
+// Hidden sensors apply to every robot in the scene that has them.
+const hideableSensors = computed(() => {
+  const all = sceneRobots(scene).flatMap((robot) => getCapability(robot.type)?.sensors ?? []).filter((s) => s.hideable)
+  return all.filter((sensor, i) => all.findIndex((s) => s.name === sensor.name) === i)
+})
+const otherRobots = computed(() => scene.robots ?? [])
+
+function addRobot() {
+  const taken = new Set(['robot', ...otherRobots.value.map((r) => r.id)])
+  let n = 2
+  while (taken.has(`robot${n}`)) n++
+  scene.robots = [...otherRobots.value, { id: `robot${n}`, type: scene.robot.type, start: { x: scene.robot.start.x, z: scene.robot.start.z + 0.4, headingDeg: 0 } }]
+}
+function removeRobot(i: number) {
+  const robots = otherRobots.value.filter((_, j) => j !== i)
+  if (robots.length) scene.robots = robots
+  else delete scene.robots
+}
+
+/** Robot conditions can name any robot in the scene; the others always mean the main one. */
+const ROBOT_KINDS = ['robotInZone', 'robotAtPose', 'propHeldBy', 'jointAtAngle']
+function objectiveRobot(objective: Objective): string {
+  const predicate = objective.predicate
+  return 'robotId' in predicate && predicate.robotId ? predicate.robotId : 'robot'
+}
+function setObjectiveRobot(objective: Objective, id: string) {
+  const predicate = objective.predicate as Predicate & { robotId?: string }
+  if (id === 'robot') delete predicate.robotId
+  else predicate.robotId = id
+}
+function capabilityFor(objective: Objective) {
+  const id = objectiveRobot(objective)
+  const robot = sceneRobots(scene).find((r) => r.id === id)
+  return robot ? getCapability(robot.type) : undefined
+}
 
 const issues = computed(() => {
   const all = [...validateScene(scene), ...validateObjectives(objectives, scene)]
@@ -64,12 +105,77 @@ const issues = computed(() => {
 })
 
 /** Simple objective kinds the form can edit; anything else is edited as JSON. */
-type SimpleKind = 'robotInZone' | 'robotAtPose' | 'propInZone'
+type SimpleKind = 'robotInZone' | 'robotAtPose' | 'propInZone' | 'propHeldBy' | 'jointAtAngle' | 'inkMatches'
 const SIMPLE_KINDS: { value: SimpleKind; label: string }[] = [
   { value: 'robotInZone', label: 'Robot reaches a zone' },
   { value: 'robotAtPose', label: 'Robot reaches a point' },
-  { value: 'propInZone', label: 'Object pushed into a zone' },
+  { value: 'propInZone', label: 'Object moved into a zone' },
+  { value: 'propHeldBy', label: 'Robot holds an object' },
+  { value: 'jointAtAngle', label: 'Joint reaches an angle' },
+  { value: 'inkMatches', label: 'Drawing matches a shape' },
 ]
+
+type InkMatches = Extract<Predicate, { kind: 'inkMatches' }>
+const SHAPE_PRESETS: { value: ShapePreset; label: string }[] = [
+  { value: 'square', label: 'Square' },
+  { value: 'triangle', label: 'Triangle' },
+  { value: 'circle', label: 'Circle' },
+  { value: 'line', label: 'Line' },
+]
+
+/** Replaces a drawing objective's shape with a preset, `size` across, keeping where it is. */
+function applyShape(predicate: InkMatches, preset: ShapePreset, size: number) {
+  if (!(size > 0)) return
+  const centre = shapeCentre(predicate.shape)
+  const { shape, closed } = shapePoints(preset, size, predicate.anywhere ? { x: 0, z: 0 } : centre)
+  predicate.shape = shape
+  predicate.closed = closed
+}
+function shapeCentre(points: { x: number; z: number }[]) {
+  if (!points.length) return { x: 0, z: 0 }
+  const xs = points.map((p) => p.x)
+  const zs = points.map((p) => p.z)
+  return { x: (Math.min(...xs) + Math.max(...xs)) / 2, z: (Math.min(...zs) + Math.max(...zs)) / 2 }
+}
+/** Moves a traced shape so its centre is at a point. */
+function moveShape(predicate: InkMatches, axis: 'x' | 'z', value: number) {
+  if (!Number.isFinite(value)) return
+  const shift = value - shapeCentre(predicate.shape)[axis]
+  predicate.shape = predicate.shape.map((p) => ({ ...p, [axis]: Math.round((p[axis] + shift) * 10000) / 10000 }))
+}
+/** Scales a shape about its centre so it's `size` across. */
+function resizeShape(predicate: InkMatches, size: number) {
+  const now = shapeSize(predicate.shape)
+  if (!(size > 0 && now > 0)) return
+  const c = shapeCentre(predicate.shape)
+  const scale = (from: number, value: number) => Math.round((from + (value - from) * (size / now)) * 10000) / 10000
+  predicate.shape = predicate.shape.map((p) => ({ x: scale(c.x, p.x), z: scale(c.z, p.z) }))
+}
+/** Sets or clears an optional drawing setting: an empty choice means "any". */
+function setInkFilter(predicate: InkMatches, key: 'color' | 'robotId', value: string) {
+  if (value) predicate[key] = value
+  else delete predicate[key]
+}
+function shapeSize(points: { x: number; z: number }[]): number {
+  const xs = points.map((p) => p.x)
+  const zs = points.map((p) => p.z)
+  return Math.round(Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs)) * 1000) / 1000
+}
+/** Copies a traced shape into the scene as a line, so learners can see what to trace. */
+function addGuideLine(predicate: InkMatches) {
+  const points = predicate.closed ? [...predicate.shape, predicate.shape[0]!] : predicate.shape
+  scene.lines.push({ id: nextId('guide', scene.lines), points: points.map((p) => ({ ...p })), width: 0.01, color: '#b8c2cc' })
+}
+/** Traced shapes, drawn on the map for the author. */
+const tracedShapes = computed(() =>
+  objectives.objectives.flatMap((o) => (o.predicate.kind === 'inkMatches' && !o.predicate.anywhere ? [{ points: o.predicate.shape, closed: !!o.predicate.closed }] : [])),
+)
+/** Kinds this scene's robot can satisfy, plus the objective's own so a mismatch still shows. */
+function kindsFor(objective: Objective) {
+  return SIMPLE_KINDS.filter((kind) =>
+    kind.value === objective.predicate.kind
+    || (kind.value === 'propHeldBy' ? !!capabilityFor(objective)?.gripper : kind.value === 'jointAtAngle' ? !!capabilityFor(objective)?.joints?.length : true))
+}
 const allSimple = computed(() => objectives.objectives.every((o) => SIMPLE_KINDS.some((k) => k.value === o.predicate.kind)))
 
 function nextId(prefix: string, existing: { id: string }[]): string {
@@ -92,6 +198,15 @@ function addProp() {
 }
 function addObjective() {
   const zone = scene.zones[0]
+  const prop = scene.props[0]
+  if (capability.value?.gripper && prop) {
+    objectives.objectives.push({
+      id: nextId('goal', objectives.objectives),
+      label: zone ? `Move ${prop.id} to ${zone.label || zone.id}` : `Pick up ${prop.id}`,
+      predicate: zone ? { kind: 'propInZone', propId: prop.id, zoneId: zone.id } : { kind: 'propHeldBy', propId: prop.id },
+    })
+    return
+  }
   objectives.objectives.push({
     id: nextId('goal', objectives.objectives),
     label: zone ? `Reach ${zone.label || zone.id}` : 'Reach the goal',
@@ -102,13 +217,23 @@ function addObjective() {
 function setKind(objective: Objective, kind: SimpleKind) {
   const zoneId = scene.zones[0]?.id
   const propId = scene.props[0]?.id ?? ''
+  const joint = capabilityFor(objective)?.joints?.[0]
+  const robotId = objectiveRobot(objective)
   const predicate: Predicate =
     kind === 'robotInZone'
       ? { kind, zoneId }
       : kind === 'propInZone'
         ? { kind, propId, zoneId }
-        : { kind, position: { x: 0, y: 0, z: 0 }, toleranceM: 0.1 }
+        : kind === 'propHeldBy'
+          ? { kind, propId }
+          : kind === 'jointAtAngle'
+            ? { kind, joint: joint?.name ?? '', value: joint?.rest ?? 0, toleranceDeg: 5 }
+            : kind === 'inkMatches'
+            ? { kind, ...shapePoints('square', 0.2), anywhere: true, toleranceM: 0.02 }
+            : { kind, position: { x: 0, y: 0, z: 0 }, toleranceM: 0.1 }
   objective.predicate = predicate
+  // Keep the robot it was about, when the new condition is about a robot too.
+  if (ROBOT_KINDS.includes(kind)) setObjectiveRobot(objective, robotId)
 }
 
 /** Lines are edited as "x,z; x,z; …" text. */
@@ -128,6 +253,13 @@ function toggleHidden(sensor: string, hidden: boolean) {
   scene.hiddenSensors = hidden ? [...scene.hiddenSensors, sensor] : scene.hiddenSensors.filter((s) => s !== sensor)
 }
 
+/** Sets one part of the three-star target, dropping the target when both parts are empty. */
+function setPar(key: 'simTimeMs' | 'blocks', raw: string) {
+  const value = raw === '' ? undefined : key === 'simTimeMs' ? Math.round(Number(raw) * 1000) : Math.round(Number(raw))
+  const par = { ...objectives.par, [key]: value }
+  objectives.par = par.simTimeMs === undefined && par.blocks === undefined ? undefined : par
+}
+
 function openJsonEditor() {
   objectivesJson.value = JSON.stringify(objectives, null, 2)
   jsonError.value = ''
@@ -138,7 +270,7 @@ function applyJson() {
   try {
     const parsed = JSON.parse(objectivesJson.value) as ObjectiveSet
     if (parsed?.version !== 1 || !Array.isArray(parsed.objectives)) throw new Error('Expected { "version": 1, "objectives": [...] }.')
-    Object.assign(objectives, { passMark: undefined }, parsed)
+    Object.assign(objectives, { passMark: undefined, par: undefined }, parsed)
     editingJson.value = false
   } catch (err) {
     jsonError.value = err instanceof Error ? err.message : 'Invalid JSON.'
@@ -233,10 +365,35 @@ const sectionTitle = 'm-0 text-sm font-semibold text-(--fg-1)'
             <label class="grid gap-1 text-xs text-(--fg-3)">Width (m)<input v-model.number="scene.arena.width" type="number" step="0.1" :class="numberInput" /></label>
             <label class="grid gap-1 text-xs text-(--fg-3)">Depth (m)<input v-model.number="scene.arena.depth" type="number" step="0.1" :class="numberInput" /></label>
             <label class="grid gap-1 text-xs text-(--fg-3)">Floor<input v-model="scene.arena.floorColor" type="color" class="h-8 w-full" /></label>
+            <label class="col-span-3 grid gap-1 text-xs text-(--fg-3)">Robot
+              <select v-model="scene.robot.type" :class="numberInput">
+                <option v-for="robot in robotTypes" :key="robot.type" :value="robot.type">{{ robot.label }}</option>
+              </select>
+            </label>
             <label class="grid gap-1 text-xs text-(--fg-3)">Robot x (m)<input v-model.number="scene.robot.start.x" type="number" step="0.05" :class="numberInput" /></label>
             <label class="grid gap-1 text-xs text-(--fg-3)">Robot z (m)<input v-model.number="scene.robot.start.z" type="number" step="0.05" :class="numberInput" /></label>
             <label class="grid gap-1 text-xs text-(--fg-3)">Heading (°)<input v-model.number="scene.robot.start.headingDeg" type="number" step="15" :class="numberInput" /></label>
             <label class="grid gap-1 text-xs text-(--fg-3)">Time limit (s)<input v-model.number="scene.timeLimitSec" type="number" step="10" :class="numberInput" /></label>
+            <label class="grid gap-1 text-xs text-(--fg-3)">Robot colour
+              <input :value="scene.robot.color ?? '#2f6fec'" type="color" class="h-8 w-full" @input="scene.robot.color = ($event.target as HTMLInputElement).value" />
+            </label>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-(--fg-3)">Other robots — programs use them as <code>robots.&lt;name&gt;</code>; the robot above is <code>robot</code>.</span>
+            <Button variant="ghost" size="sm" :disabled="otherRobots.length >= 3" @click="addRobot"><Plus :size="14" />Add robot</Button>
+          </div>
+          <div v-for="(robot, i) in otherRobots" :key="i" class="grid grid-cols-[1fr_1.4fr_repeat(3,64px)_40px_32px] items-end gap-2 max-md:grid-cols-4">
+            <label class="grid gap-1 text-xs text-(--fg-3)">Name<input v-model="robot.id" :class="numberInput" /></label>
+            <label class="grid gap-1 text-xs text-(--fg-3)">Type
+              <select v-model="robot.type" :class="numberInput">
+                <option v-for="type in robotTypes" :key="type.type" :value="type.type">{{ type.label }}</option>
+              </select>
+            </label>
+            <label class="grid gap-1 text-xs text-(--fg-3)">x<input v-model.number="robot.start.x" type="number" step="0.05" :class="numberInput" /></label>
+            <label class="grid gap-1 text-xs text-(--fg-3)">z<input v-model.number="robot.start.z" type="number" step="0.05" :class="numberInput" /></label>
+            <label class="grid gap-1 text-xs text-(--fg-3)">°<input v-model.number="robot.start.headingDeg" type="number" step="15" :class="numberInput" /></label>
+            <input :value="robot.color ?? '#e8742a'" type="color" class="h-8 w-full" aria-label="Colour" @input="robot.color = ($event.target as HTMLInputElement).value" />
+            <Button variant="ghost" size="icon-sm" aria-label="Remove robot" @click="removeRobot(i)"><Trash2 :size="14" /></Button>
           </div>
           <div v-if="hideableSensors.length" class="flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-(--fg-2)">
             <span class="text-xs text-(--fg-3) w-full">Hide sensors in this scene</span>
@@ -346,19 +503,54 @@ const sectionTitle = 'm-0 text-sm font-semibold text-(--fg-1)'
                 @input="objectives.passMark = ($event.target as HTMLInputElement).value === '' ? undefined : Number(($event.target as HTMLInputElement).value)"
               />
             </label>
+            <div class="grid gap-1">
+              <div class="grid grid-cols-2 max-w-100 gap-2">
+                <label class="grid gap-1 text-xs text-(--fg-3)">Three-star time (s)
+                  <input
+                    :value="objectives.par?.simTimeMs !== undefined ? objectives.par.simTimeMs / 1000 : ''"
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    :class="numberInput"
+                    placeholder="No limit"
+                    @input="setPar('simTimeMs', ($event.target as HTMLInputElement).value)"
+                  />
+                </label>
+                <label class="grid gap-1 text-xs text-(--fg-3)">Three-star blocks
+                  <input
+                    :value="objectives.par?.blocks ?? ''"
+                    type="number"
+                    min="1"
+                    step="1"
+                    :class="numberInput"
+                    placeholder="No limit"
+                    @input="setPar('blocks', ($event.target as HTMLInputElement).value)"
+                  />
+                </label>
+              </div>
+              <p class="m-0 text-xs text-(--fg-3)">
+                Learners get one star for passing and two for meeting every objective. The third is for doing it within these targets (blocks only apply to block programs). Leave both empty to give three stars for meeting every objective.
+              </p>
+            </div>
             <p v-if="!objectives.objectives.length" class="m-0 text-xs text-(--fg-3)">A scene without objectives is practice only: learners can run it but not submit it for a grade.</p>
             <div v-for="(objective, i) in objectives.objectives" :key="i" class="grid gap-2 rounded-(--ra-md) border border-(--line-1) p-3">
               <div class="grid grid-cols-[1fr_1fr_32px] items-end gap-2">
                 <label class="grid gap-1 text-xs text-(--fg-3)">Label<input v-model="objective.label" :class="numberInput" /></label>
                 <label class="grid gap-1 text-xs text-(--fg-3)">Condition
                   <select :value="objective.predicate.kind" :class="numberInput" @change="setKind(objective, ($event.target as HTMLSelectElement).value as SimpleKind)">
-                    <option v-for="kind in SIMPLE_KINDS" :key="kind.value" :value="kind.value">{{ kind.label }}</option>
+                    <option v-for="kind in kindsFor(objective)" :key="kind.value" :value="kind.value">{{ kind.label }}</option>
                   </select>
                 </label>
                 <Button variant="ghost" size="icon-sm" aria-label="Remove objective" @click="objectives.objectives.splice(i, 1)"><Trash2 :size="14" /></Button>
               </div>
               <div class="grid grid-cols-4 items-end gap-2 max-md:grid-cols-2">
-                <label v-if="objective.predicate.kind === 'propInZone'" class="grid gap-1 text-xs text-(--fg-3)">Object
+                <label v-if="otherRobots.length && ROBOT_KINDS.includes(objective.predicate.kind)" class="grid gap-1 text-xs text-(--fg-3)">Robot
+                  <select :value="objectiveRobot(objective)" :class="numberInput" @change="setObjectiveRobot(objective, ($event.target as HTMLSelectElement).value)">
+                    <option value="robot">robot (main)</option>
+                    <option v-for="robot in otherRobots" :key="robot.id" :value="robot.id">{{ robot.id }}</option>
+                  </select>
+                </label>
+                <label v-if="objective.predicate.kind === 'propInZone' || objective.predicate.kind === 'propHeldBy'" class="grid gap-1 text-xs text-(--fg-3)">Object
                   <select v-model="objective.predicate.propId" :class="numberInput">
                     <option v-for="prop in scene.props" :key="prop.id" :value="prop.id">{{ prop.id }}</option>
                   </select>
@@ -372,6 +564,73 @@ const sectionTitle = 'm-0 text-sm font-semibold text-(--fg-1)'
                   <label class="grid gap-1 text-xs text-(--fg-3)">x<input v-model.number="objective.predicate.position.x" type="number" step="0.05" :class="numberInput" /></label>
                   <label class="grid gap-1 text-xs text-(--fg-3)">z<input v-model.number="objective.predicate.position.z" type="number" step="0.05" :class="numberInput" /></label>
                   <label class="grid gap-1 text-xs text-(--fg-3)">Within (m)<input v-model.number="objective.predicate.toleranceM" type="number" step="0.01" :class="numberInput" /></label>
+                </template>
+                <template v-if="objective.predicate.kind === 'inkMatches'">
+                  <label class="grid gap-1 text-xs text-(--fg-3)">Shape
+                    <select :class="numberInput" @change="applyShape(objective.predicate, ($event.target as HTMLSelectElement).value as ShapePreset, shapeSize(objective.predicate.shape)); ($event.target as HTMLSelectElement).value = ''">
+                      <option value="" selected>Replace with…</option>
+                      <option v-for="preset in SHAPE_PRESETS" :key="preset.value" :value="preset.value">{{ preset.label }}</option>
+                    </select>
+                  </label>
+                  <label class="grid gap-1 text-xs text-(--fg-3)">Size (m)
+                    <input :value="shapeSize(objective.predicate.shape)" type="number" step="0.05" min="0.02" :class="numberInput"
+                      @change="resizeShape(objective.predicate, Number(($event.target as HTMLInputElement).value))" />
+                  </label>
+                  <label class="grid gap-1 text-xs text-(--fg-3)">Within (m)<input v-model.number="objective.predicate.toleranceM" type="number" step="0.005" :class="numberInput" /></label>
+                  <label class="grid gap-1 text-xs text-(--fg-3)">Coverage (%)
+                    <input :value="Math.round((objective.predicate.coverage ?? DEFAULT_COVERAGE) * 100)" type="number" min="1" max="100" step="5" :class="numberInput"
+                      @change="(objective.predicate as InkMatches).coverage = Number(($event.target as HTMLInputElement).value) / 100" />
+                  </label>
+                  <label class="grid gap-1 text-xs text-(--fg-3)">Colour
+                    <select :value="objective.predicate.color ?? ''" :class="numberInput"
+                      @change="setInkFilter(objective.predicate, 'color', ($event.target as HTMLSelectElement).value)">
+                      <option value="">any</option>
+                      <option v-for="color in PEN_COLORS" :key="color.name" :value="color.name">{{ color.name }}</option>
+                    </select>
+                  </label>
+                  <label v-if="otherRobots.length" class="grid gap-1 text-xs text-(--fg-3)">Drawn by
+                    <select :value="objective.predicate.robotId ?? ''" :class="numberInput"
+                      @change="setInkFilter(objective.predicate, 'robotId', ($event.target as HTMLSelectElement).value)">
+                      <option value="">any robot</option>
+                      <option value="robot">robot (main)</option>
+                      <option v-for="robot in otherRobots" :key="robot.id" :value="robot.id">{{ robot.id }}</option>
+                    </select>
+                  </label>
+                  <template v-if="!objective.predicate.anywhere">
+                    <label class="grid gap-1 text-xs text-(--fg-3)">Centre x
+                      <input :value="shapeCentre(objective.predicate.shape).x" type="number" step="0.05" :class="numberInput" @change="moveShape(objective.predicate, 'x', Number(($event.target as HTMLInputElement).value))" />
+                    </label>
+                    <label class="grid gap-1 text-xs text-(--fg-3)">Centre z
+                      <input :value="shapeCentre(objective.predicate.shape).z" type="number" step="0.05" :class="numberInput" @change="moveShape(objective.predicate, 'z', Number(($event.target as HTMLInputElement).value))" />
+                    </label>
+                  </template>
+                  <div class="col-span-full flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-(--fg-2)">
+                    <label class="inline-flex items-center gap-1.5">
+                      <input type="checkbox" :checked="!!objective.predicate.anywhere" @change="(objective.predicate as InkMatches).anywhere = ($event.target as HTMLInputElement).checked" />
+                      Anywhere, any way round
+                    </label>
+                    <label class="inline-flex items-center gap-1.5">
+                      <input type="checkbox" :checked="objective.predicate.strict ?? true" @change="(objective.predicate as InkMatches).strict = ($event.target as HTMLInputElement).checked" />
+                      No other ink allowed
+                    </label>
+                    <label class="inline-flex items-center gap-1.5">
+                      <input type="checkbox" :checked="!!objective.predicate.closed" @change="(objective.predicate as InkMatches).closed = ($event.target as HTMLInputElement).checked" />
+                      Closed shape
+                    </label>
+                    <Button v-if="!objective.predicate.anywhere" variant="ghost" size="sm" @click="addGuideLine(objective.predicate)">Show it as a scene line</Button>
+                  </div>
+                  <p v-if="objective.predicate.anywhere && (objective.predicate.strict ?? true) === false && !objective.predicate.color" class="col-span-full m-0 text-xs text-(--fg-3)">
+                    A shape drawn anywhere is found from its ink alone: with other ink allowed, give it its own colour so the two can be told apart.
+                  </p>
+                </template>
+                <template v-if="objective.predicate.kind === 'jointAtAngle'">
+                  <label class="grid gap-1 text-xs text-(--fg-3)">Joint
+                    <select v-model="objective.predicate.joint" :class="numberInput">
+                      <option v-for="joint in capabilityFor(objective)?.joints ?? []" :key="joint.name" :value="joint.name">{{ joint.label }}</option>
+                    </select>
+                  </label>
+                  <label class="grid gap-1 text-xs text-(--fg-3)">Angle (°)<input v-model.number="objective.predicate.value" type="number" step="5" :class="numberInput" /></label>
+                  <label class="grid gap-1 text-xs text-(--fg-3)">Within (°)<input v-model.number="objective.predicate.toleranceDeg" type="number" step="1" :class="numberInput" /></label>
                 </template>
                 <label class="grid gap-1 text-xs text-(--fg-3)">Weight<input v-model.number="objective.weight" type="number" min="0" step="1" placeholder="1" :class="numberInput" /></label>
                 <label class="grid gap-1 text-xs text-(--fg-3)">Hold (ms)<input v-model.number="objective.holdMs" type="number" min="0" step="100" placeholder="0" :class="numberInput" /></label>
@@ -407,7 +666,7 @@ const sectionTitle = 'm-0 text-sm font-semibold text-(--fg-1)'
             </template>
           </div>
           <div v-if="previewTab === 'map'" class="p-4">
-            <SceneMap :scene="scene" @place="(p) => { scene.robot.start.x = p.x; scene.robot.start.z = p.z }" />
+            <SceneMap :scene="scene" :guides="tracedShapes" @place="(p) => { scene.robot.start.x = p.x; scene.robot.start.z = p.z }" />
           </div>
           <SimulationPlayer
             v-else-if="!validateScene(testScene.definition).length"

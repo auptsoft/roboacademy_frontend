@@ -1,12 +1,15 @@
 import { apiFetch, apiFetchPaged, type PageMeta } from '@/api/client'
+import type { GradedQuestion, QuizKind } from '@/components/questions/question-kinds'
 
 // --- Question Bank ---
 
 export interface QuestionBankItemSummary {
   id: string
+  /** Multiple choice: the question. Other kinds: their prompt. */
   text: string
   optionCount: number
   tags: string[]
+  kind: QuizKind
 }
 
 export interface QuestionBankItemDetail {
@@ -15,13 +18,19 @@ export interface QuestionBankItemDetail {
   options: string[]
   correctOptionIndex: number
   tags: string[]
+  kind: QuizKind
+  /** Non-choice kinds: the full question, answers included. */
+  definition: GradedQuestion | null
 }
 
+/** Multiple choice: text, options, correctOptionIndex. Other kinds: kind and definition. */
 export interface UpsertQuestionBankItemRequest {
-  text: string
-  options: string[]
-  correctOptionIndex: number
+  text?: string
+  options?: string[]
+  correctOptionIndex?: number
   tags?: string[]
+  kind?: QuizKind
+  definition?: GradedQuestion
 }
 
 export function listQuestionBank(
@@ -72,11 +81,14 @@ export interface AssessmentListItem {
   postText: string | null
 }
 
+/** A bank item; inline multiple choice (text, options, correctOptionIndex); or another kind with its definition. */
 export interface QuestionInput {
   bankItemId?: string
   text?: string
   options?: string[]
   correctOptionIndex?: number
+  kind?: QuizKind
+  definition?: GradedQuestion
 }
 
 export interface CreateAssessmentRequest {
@@ -90,6 +102,8 @@ export interface CreateAssessmentRequest {
   // Quiz-only
   passMark?: number
   questions?: QuestionInput[]
+  questionDisplay?: QuestionDisplay
+  allowBackNavigation?: boolean
   // Written-only
   prompt?: string
   // FileSubmission-only
@@ -112,6 +126,8 @@ export interface AuthoredQuestion {
   correctOptionIndex: number
   order: number
   bankItemId: string | null
+  kind: QuizKind
+  definition: GradedQuestion | null
 }
 
 export interface AuthoredAssessment {
@@ -140,7 +156,11 @@ export interface AuthoredAssessment {
   // Content (passMark/questions/prompt/file config) is only editable in place while this is
   // zero - see updateAssessmentContent. Once it's non-zero, clone the assessment instead.
   attemptCount: number
+  questionDisplay: QuestionDisplay
+  allowBackNavigation: boolean
 }
+
+export type QuestionDisplay = 'AllOnOnePage' | 'OneAtATime'
 
 export interface UpdateAssessmentRequest {
   title: string
@@ -150,6 +170,9 @@ export interface UpdateAssessmentRequest {
   preText?: string | null
   postText?: string | null
   moduleId?: string
+  /** Quizzes: omit to keep the current layout. */
+  questionDisplay?: QuestionDisplay
+  allowBackNavigation?: boolean
 }
 
 export interface ListAssessmentsFilters {
@@ -179,6 +202,7 @@ export function getAssessmentForAuthor(assessmentId: string): Promise<AuthoredAs
 
 export function updateAssessment(assessmentId: string, request: UpdateAssessmentRequest): Promise<{
   id: string; title: string; isRequired: boolean; allowUnenrolled: boolean; order: number
+  questionDisplay: QuestionDisplay; allowBackNavigation: boolean
 }> {
   return apiFetch(`/api/assessment/assessments/${assessmentId}`, { method: 'PUT', body: JSON.stringify(request) })
 }
@@ -239,6 +263,8 @@ export interface AttemptItem {
   fileReference: string | null
   score: number | null
   passed: boolean | null
+  /** Handed in because time ran out. */
+  submittedAutomatically: boolean
 }
 
 export interface ListAttemptsFilters {
@@ -263,6 +289,19 @@ export function gradeAttempt(
   attemptId: string, request: { passed: boolean; score?: number; feedback?: string },
 ): Promise<{ attemptId: string; status: AttemptStatus; passed: boolean }> {
   return apiFetch(`/api/assessment/attempts/${attemptId}/grade`, { method: 'POST', body: JSON.stringify(request) })
+}
+
+// --- Images for quiz and bank questions (label the diagram) ---
+
+export function getAssessmentAssetUploadUrl(
+  request: { contentType: string; fileName: string; sizeBytes: number },
+): Promise<{ uploadUrl: string; objectKey: string; expiresAt: string }> {
+  return apiFetch('/api/assessment/asset-upload-url', { method: 'POST', body: JSON.stringify(request) })
+}
+
+// Signed URLs for authors previewing question images (quiz images, or a lesson's not yet copied in).
+export function getAssessmentAssetUrls(keys: string[]): Promise<{ urls: Record<string, string>; expiresAt: string }> {
+  return apiFetch('/api/assessment/asset-urls', { method: 'POST', body: JSON.stringify({ keys }) })
 }
 
 // --- Cross-tenant assessment & question-bank copy (platform admin only, from the platform tenant) ---

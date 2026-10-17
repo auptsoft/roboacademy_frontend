@@ -7,7 +7,7 @@ defineProps<{ class?: HTMLAttributes['class'] }>()
 </script>
 
 <template>
-  <DialogTitlePrimitive :class="cn('text-lg leading-none font-semibold tracking-wider uppercase', $props.class)">
+  <DialogTitlePrimitive :class="cn('text-lg leading-tight font-semibold tracking-[-0.01em]', $props.class)">
     <slot />
   </DialogTitlePrimitive>
 </template>

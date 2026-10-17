@@ -136,6 +136,41 @@ const router = createRouter({
                 },
 
                 {
+                    path: 'achievements',
+                    component: () => import("@/pages/app/achievements.vue")
+                },
+
+                {
+                    path: 'community',
+                    component: () => import("@/pages/app/community.vue")
+                },
+
+                {
+                    path: 'community/courses/:courseId',
+                    component: () => import("@/pages/app/community.vue")
+                },
+
+                {
+                    path: 'community/posts/:id',
+                    component: () => import("@/pages/app/community-post.vue")
+                },
+
+                {
+                    path: 'community/groups',
+                    component: () => import("@/pages/app/community-groups.vue")
+                },
+
+                {
+                    path: 'community/groups/:id',
+                    component: () => import("@/pages/app/community-group.vue")
+                },
+
+                {
+                    path: 'community/chat/:channelId?',
+                    component: () => import("@/pages/app/community-chat.vue")
+                },
+
+                {
                     path: 'notifications',
                     component: () => import("@/pages/app/notifications.vue")
                 },

@@ -60,6 +60,26 @@ const router = createRouter({
           component: () => import('@/pages/payments/payout.vue'),
         },
         {
+          path: 'gamification',
+          component: () => import('@/pages/gamification/index.vue'),
+        },
+        {
+          path: 'community/moderation',
+          component: () => import('@/pages/community/moderation.vue'),
+        },
+        {
+          path: 'community/settings',
+          component: () => import('@/pages/community/settings.vue'),
+        },
+        {
+          path: 'community/chat',
+          component: () => import('@/pages/community/chat-moderation.vue'),
+        },
+        {
+          path: 'community/groups',
+          component: () => import('@/pages/community/groups.vue'),
+        },
+        {
           path: 'payments/sales',
           component: () => import('@/pages/payments/sales.vue'),
         },

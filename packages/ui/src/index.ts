@@ -26,3 +26,6 @@ export { default as RaInteractiveLesson } from './components/lesson-blocks/Inter
 export * from './components/lesson-blocks/types'
 export { useAssetUrl } from './components/lesson-blocks/assets'
 export { renderRichText } from './lib/rich-text'
+export { default as RaQuizQuestion } from './components/quiz/QuizQuestion.vue'
+export * from './components/quiz/types'
+export { quizPreview, type QuizPreview } from './components/quiz/preview'

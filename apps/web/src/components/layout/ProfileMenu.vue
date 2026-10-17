@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { inject } from 'vue'
 import { useRouter } from 'vue-router'
-import { User, BarChart3, Award, Settings, LogOut, ChevronDown, HelpCircle } from 'lucide-vue-next'
+import { User, BarChart3, Award, Settings, LogOut, ChevronDown, HelpCircle, Trophy } from 'lucide-vue-next'
 import {
   DropdownMenuRoot,
   DropdownMenuTrigger,
@@ -12,7 +12,7 @@ import {
 } from 'reka-ui'
 import { RaAvatar, RaThemeToggle } from '@roboacademy/ui'
 import { getCurrentUser, logout } from '@/store/auth'
-import { brandingKey, hasFeature } from '@/branding'
+import { brandingKey, featureConfirmed, hasFeature } from '@/branding'
 
 
 const router = useRouter()
@@ -34,7 +34,7 @@ function handleLogout() {
     >
       <RaAvatar :name="user?.fullName || 'Learner'" :size="30" />
       <span class="text-sm font-medium text-(--heading) whitespace-nowrap max-[480px]:hidden">{{ user?.fullName || '...' }}</span>
-      <ChevronDown :size="16" class="text-(--fg-3)" />
+      <!-- <ChevronDown :size="16" class="text-(--fg-3)" /> -->
     </DropdownMenuTrigger>
     <DropdownMenuPortal>
       <DropdownMenuContent
@@ -68,6 +68,15 @@ function handleLogout() {
         >
           <Award :size="16" />
           Certificates
+        </DropdownMenuItem>
+        <!-- Also in the sidebar, but phones have no sidebar and the bottom bar is full. -->
+        <DropdownMenuItem
+          v-if="featureConfirmed(branding, 'gamification')"
+          class="flex items-center gap-2.5 px-2.5 py-2.5 rounded-(--ra-md) cursor-pointer text-sm font-medium text-(--fg-2) outline-none transition-colors duration-(--dur-1) ease-(--ease-out) data-[highlighted]:bg-(--bg-3) data-[highlighted]:text-(--fg-1)"
+          @select="router.push('/app/achievements')"
+        >
+          <Trophy :size="16" />
+          Achievements
         </DropdownMenuItem>
         <DropdownMenuItem
           class="flex items-center gap-2.5 px-2.5 py-2.5 rounded-(--ra-md) cursor-pointer text-sm font-medium text-(--fg-2) outline-none transition-colors duration-(--dur-1) ease-(--ease-out) data-[highlighted]:bg-(--bg-3) data-[highlighted]:text-(--fg-1)"

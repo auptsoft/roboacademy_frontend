@@ -80,6 +80,43 @@ describe('Simulation', () => {
     sim.dispose()
   })
 
+  it('rejects unknown robot types', () => {
+    expect(() => new Simulation(scene({ robot: { type: 'hovercraft', start: { x: 0, z: 0, headingDeg: 0 } } }), null)).toThrow(/Unknown robot type/)
+  })
+
+  it('reports the robot state in frames', () => {
+    const sim = new Simulation(scene(), null)
+    const { robot } = sim.frame()
+    expect(robot.transform.position.x).toBeCloseTo(0, 3)
+    expect(robot.joints).toEqual({})
+    sim.dispose()
+  })
+
+  it('drives the rover with the same commands, more slowly', async () => {
+    const roverScene = scene({ robot: { type: 'rover', start: { x: 0, z: 0, headingDeg: 0 } } })
+    const sim = new Simulation(roverScene, null)
+    await runUntil(sim, sim.command('move', { distanceCm: 30, speed: 50 }))
+    expect(sim.sensor('pos_x')).toBeCloseTo(0.3, 1)
+    await runUntil(sim, sim.command('turn', { degrees: 90, speed: 50 }))
+    expect(sim.sensor('heading') as number).toBeGreaterThan(87)
+    expect(sim.sensor('heading') as number).toBeLessThan(93)
+    const roverMs = sim.elapsedMs
+    sim.dispose()
+
+    const twoWheel = new Simulation(scene(), null)
+    await runUntil(twoWheel, twoWheel.command('move', { distanceCm: 30, speed: 50 }))
+    await runUntil(twoWheel, twoWheel.command('turn', { degrees: 90, speed: 50 }))
+    expect(twoWheel.elapsedMs).toBeLessThan(roverMs)
+    twoWheel.dispose()
+  })
+
+  it('gives the rover a longer distance sensor', () => {
+    const sim = new Simulation(scene({ robot: { type: 'rover', start: { x: -1, z: 0, headingDeg: 0 } }, arena: { width: 5, depth: 2, floorColor: '#fff' } }), null)
+    // 3.35 m from the rover's front to the arena edge: capped at its 3 m range, not the two-wheel robot's 2 m.
+    expect(sim.sensor('distance_front')).toBe(3)
+    sim.dispose()
+  })
+
   it('grades objectives during the run', async () => {
     const sim = new Simulation(
       scene({ zones: [{ id: 'goal', center: { x: 0.6, z: 0 }, size: { x: 0.3, z: 0.3 }, color: '#0f0' }] }),

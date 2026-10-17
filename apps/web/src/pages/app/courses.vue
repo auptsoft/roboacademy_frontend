@@ -124,7 +124,7 @@ const statusHelp = [
           <RaButton variant="secondary" @click="router.push('/app/explore')">Explore Courses</RaButton>
         </div>
 
-        <div v-else class="grid gap-x-6 gap-y-9 mt-7 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div v-else class="grid gap-x-6 gap-y-9 max-sm:gap-y-0 mt-7 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           <CourseTile
             v-for="c in visibleCourses"
             :key="c.enrolmentId"
