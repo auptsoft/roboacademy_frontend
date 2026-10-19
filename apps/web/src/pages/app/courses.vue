@@ -81,7 +81,7 @@ const statusHelp = [
               @click="showStatusHelp = !showStatusHelp"
             >
               <Info :size="18" class="text-(--warning)" />
-              See what each course status means
+              <!-- See what each course status means -->
             </button>
             <div
               v-if="showStatusHelp"
