@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { AlertTriangle, ArrowLeft, Crown, Loader2, MessageCircle, Target, UserMinus } from 'lucide-vue-next'
+import { AlertTriangle, ArrowLeft, Crown, Loader2, MessageCircle, Target, UserMinus, UserPlus } from 'lucide-vue-next'
 import { RaButton, RaChip, RaProgress } from '@roboacademy/ui'
 import { ApiError } from '@/api/client'
 import { getCommunityHome, getGroupBoard, type CommunityHome, type Space } from '@/api/community'
 import {
-  archiveGroup, getGroup, joinGroup, leaveGroup, removeGroupMember, GROUP_STATUS_LABELS,
-  type GroupMember, type StudyGroupDetail,
+  addGroupMember, archiveGroup, getGroup, joinGroup, leaveGroup, listGroupCandidates, removeGroupMember,
+  GROUP_STATUS_LABELS, type Contact, type GroupMember, type StudyGroupDetail,
 } from '@/api/community-chat'
 import { getCurrentUser } from '@/store/auth'
 import SpaceFeed from '@/components/community/SpaceFeed.vue'
@@ -77,6 +77,51 @@ function leave() {
   }
 }
 
+// ── Add people ───────────────────────────────────────────────────────────────
+const adding = ref(false)
+const search = ref('')
+const candidates = ref<Contact[]>([])
+const candidatesLoading = ref(false)
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+
+async function findCandidates() {
+  candidatesLoading.value = true
+  try {
+    candidates.value = await listGroupCandidates(groupId.value, search.value.trim())
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : "Couldn't load classmates."
+  } finally {
+    candidatesLoading.value = false
+  }
+}
+
+function toggleAdding() {
+  adding.value = !adding.value
+  if (adding.value) {
+    search.value = ''
+    void findCandidates()
+  }
+}
+
+watch(search, () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => void findCandidates(), 250)
+})
+
+async function addPerson(contact: Contact) {
+  busy.value = true
+  error.value = ''
+  try {
+    await addGroupMember(groupId.value, contact.id)
+    candidates.value = candidates.value.filter((c) => c.id !== contact.id)
+    detail.value = await getGroup(groupId.value)
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : "Couldn't add them."
+  } finally {
+    busy.value = false
+  }
+}
+
 function archive() {
   if (window.confirm('Close this group? It becomes read-only for everyone.')) {
     void act(() => archiveGroup(groupId.value))
@@ -121,6 +166,10 @@ function archive() {
             <template #icon><MessageCircle :size="16" /></template>
             Group chat
           </RaButton>
+          <RaButton v-if="group.canManage" variant="secondary" @click="toggleAdding">
+            <template #icon><UserPlus :size="16" /></template>
+            Add people
+          </RaButton>
           <RaButton v-if="group.canJoin" :disabled="busy" @click="act(() => joinGroup(group!.id))">Join</RaButton>
           <RaButton v-if="detail.canLeave && group.status === 'Active'" variant="ghost" :disabled="busy" @click="leave">Leave</RaButton>
           <RaButton v-if="group.canManage" variant="ghost" :disabled="busy" @click="archive">Close group</RaButton>
@@ -141,6 +190,25 @@ function archive() {
         <div v-if="detail.averageProgress !== null" class="flex items-center gap-3">
           <div class="flex-1"><RaProgress :value="detail.averageProgress" tone="green" /></div>
           <span class="text-[13px] font-semibold text-(--fg-2)">{{ detail.averageProgress }}% as a group</span>
+        </div>
+      </section>
+
+      <section v-if="adding && group.canManage" class="flex flex-col gap-2 rounded-(--ra-lg) border border-(--line-2) bg-(--bg-1) p-4">
+        <h2 class="m-0 text-base font-semibold text-(--heading)">Add people from {{ group.class.name }}</h2>
+        <input
+          v-model="search"
+          type="search"
+          placeholder="Search by name"
+          aria-label="Search classmates"
+          class="rounded-(--ra-md) border border-(--line-2) bg-(--bg-0) px-3 py-2 text-sm text-(--fg-1) outline-none focus:border-(--brand-blue)"
+        />
+        <div v-if="candidatesLoading" class="flex items-center gap-2 py-2 text-[13px] text-(--fg-3)">
+          <Loader2 :size="14" class="animate-spin" /> Loading…
+        </div>
+        <p v-else-if="candidates.length === 0" class="m-0 py-2 text-[13px] text-(--fg-3)">No one left to add.</p>
+        <div v-for="candidate in candidatesLoading ? [] : candidates" :key="candidate.id" class="flex items-center gap-3 px-1 py-1">
+          <span class="flex-1 truncate text-sm text-(--fg-1)">{{ candidate.name }}</span>
+          <RaButton variant="secondary" :disabled="busy" @click="addPerson(candidate)">Add</RaButton>
         </div>
       </section>
 

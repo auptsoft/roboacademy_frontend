@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { inject } from 'vue'
+import { computed, inject } from 'vue'
 import { useRouter } from 'vue-router'
 import { User, BarChart3, Award, Settings, LogOut, HelpCircle, Trophy } from 'lucide-vue-next'
 import {
@@ -13,12 +13,17 @@ import {
 import { RaAvatar, RaThemeToggle } from '@roboacademy/ui'
 import { getCurrentUser, logout } from '@/store/auth'
 import { brandingKey, featureConfirmed, hasFeature } from '@/branding'
+import { navFor } from './nav-items'
 
 
 const router = useRouter()
 
 const user = getCurrentUser()
 const branding = inject(brandingKey, null)
+
+// Phones have no sidebar and the bottom bar is full, so the community areas live here. Gated like the
+// sidebar (navFor); on larger screens the sidebar already shows them.
+const communityLinks = computed(() => navFor(branding?.value).filter((item) => item.id === 'community' || item.id === 'messages'))
 
 function handleLogout() {
   logout()
@@ -77,6 +82,15 @@ function handleLogout() {
         >
           <Trophy :size="16" />
           Achievements
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          v-for="link in communityLinks"
+          :key="link.id"
+          class="md:hidden flex items-center gap-2.5 px-2.5 py-2.5 rounded-(--ra-md) cursor-pointer text-sm font-medium text-(--fg-2) outline-none transition-colors duration-(--dur-1) ease-(--ease-out) data-[highlighted]:bg-(--bg-3) data-[highlighted]:text-(--fg-1)"
+          @select="router.push(link.path)"
+        >
+          <component :is="link.icon" :size="16" />
+          {{ link.label }}
         </DropdownMenuItem>
         <DropdownMenuItem
           class="flex items-center gap-2.5 px-2.5 py-2.5 rounded-(--ra-md) cursor-pointer text-sm font-medium text-(--fg-2) outline-none transition-colors duration-(--dur-1) ease-(--ease-out) data-[highlighted]:bg-(--bg-3) data-[highlighted]:text-(--fg-1)"
