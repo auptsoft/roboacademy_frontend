@@ -10,9 +10,9 @@ import {
 import { ArrowLeft, Plus, RotateCcw, Sparkles } from 'lucide-vue-next'
 import { lessonBlockRenderers } from '@roboacademy/sim/lesson'
 import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import BlockEditorCard from '@/components/lesson-content/BlockEditorCard.vue'
 import { lessonAssetContextKey } from '@/components/lesson-content/asset-context'
+import BlockTypeMenu from '@/components/lesson-content/BlockTypeMenu.vue'
 import AIDraftLessonDialog from '@/components/lesson-content/AIDraftLessonDialog.vue'
 import { useAIAvailability } from '@/composables/useAIAvailability'
 import { ApiError } from '@/api/client'
@@ -20,7 +20,7 @@ import {
   getCourse, getLessonAssetUploadUrl, getLessonAssetUrls, getLessonBlockInsights, setLessonInteractiveContent,
   type CourseDetail, type LessonBlockInsight, type LessonItem,
 } from '@/api/learning'
-import { BLOCK_TYPES, duplicateBlock, newBlock, type BlockType } from '@/lib/lesson-blocks'
+import { duplicateBlock, newBlock, type BlockType } from '@/lib/lesson-blocks'
 import { renderRichText } from '@/lib/rich-text'
 
 /**
@@ -74,8 +74,6 @@ function insertDraft(blocks: InteractiveLessonContent['blocks'], mode: 'append' 
   toast.success('Draft added. Review each block, then save.')
 }
 
-const blockGroups = computed(() =>
-  [...new Set(BLOCK_TYPES.map(t => t.group))].map(group => ({ group, types: BLOCK_TYPES.filter(t => t.group === group) })))
 const previewKey = ref(0)
 
 const isDraft = computed(() => course.value?.state === 'Draft')
@@ -135,8 +133,9 @@ async function loadInsights() {
   }
 }
 
-function addBlock(type: BlockType) {
-  draft.value.blocks.push(newBlock(type))
+/** Adds a block at `index` (between existing blocks), or at the end when omitted. */
+function addBlock(type: BlockType, index = draft.value.blocks.length) {
+  draft.value.blocks.splice(index, 0, newBlock(type))
 }
 
 function moveBlock(index: number, delta: -1 | 1) {
@@ -279,6 +278,18 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', warnOnUnload))
             No blocks yet. Add text, questions and activities to build the lesson.
           </p>
           <template v-for="(block, index) in draft.blocks" :key="block.id">
+            <div v-if="isDraft && index > 0" class="group relative -my-1.5 flex h-4 items-center justify-center">
+              <span class="absolute inset-x-0 top-1/2 h-px bg-(--line-2) opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 has-[[data-state=open]]:opacity-100" />
+              <BlockTypeMenu @select="addBlock($event, index)">
+                <button
+                  type="button"
+                  :aria-label="`Insert block before block ${index + 1}`"
+                  class="relative z-10 inline-flex size-5 cursor-pointer items-center justify-center rounded-full border border-(--line-2) bg-(--bg-1) p-0 text-(--fg-2) opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 max-lg:opacity-100"
+                >
+                  <Plus :size="12" />
+                </button>
+              </BlockTypeMenu>
+            </div>
             <span v-if="isCards && cardStarts.has(index)" class="mt-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-(--fg-4)">
               Card {{ cardStarts.get(index) }}
             </span>
@@ -296,23 +307,9 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', warnOnUnload))
           </template>
           <p v-for="msg in errors.blocks ?? []" :key="msg" class="m-0 text-xs text-(--danger)">{{ msg }}</p>
 
-          <DropdownMenu v-if="isDraft">
-            <DropdownMenuTrigger as-child>
-              <Button variant="outline" class="self-start"><Plus :size="14" /> Add block</Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" class="max-h-[70vh] w-72 overflow-y-auto">
-              <template v-for="{ group, types } in blockGroups" :key="group">
-                <div class="px-2.5 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-(--fg-4)">{{ group }}</div>
-                <DropdownMenuItem v-for="option in types" :key="option.type" class="items-start" @select="addBlock(option.type)">
-                  <component :is="option.icon" class="mt-0.5" />
-                  <span class="flex flex-col">
-                    <span class="font-semibold text-(--fg-1)">{{ option.label }}</span>
-                    <span class="text-xs text-(--fg-3)">{{ option.description }}</span>
-                  </span>
-                </DropdownMenuItem>
-              </template>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <BlockTypeMenu v-if="isDraft" @select="addBlock($event)">
+            <Button variant="outline" class="self-start"><Plus :size="14" /> Add block</Button>
+          </BlockTypeMenu>
         </fieldset>
 
         <div class="min-w-0" :class="tab === 'edit' && 'max-lg:hidden'">

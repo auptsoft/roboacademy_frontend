@@ -991,14 +991,15 @@ watch(() => route.params.id, load, { immediate: true })
       </div>
 
       <template v-if="contentKind === 'lesson' && selectedFlat">
-        <div class="flex items-center gap-3 mb-3">
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-2 mb-3">
           <RaChip tone="info">{{ selectedFlat.moduleTitle }}</RaChip>
           <span v-if="course.level" class="inline-flex items-center gap-1.5 text-xs text-(--fg-3)"><Layers :size="12" /> {{ course.level }}</span>
           <RaChip :tone="selectedFlat.lesson.isRequired ? 'student' : 'neutral'">{{ selectedFlat.lesson.isRequired ? 'Required' : 'Optional' }}</RaChip>
+          <div v-if="showTutorButton || showQAButton" class="flex shrink-0 items-center gap-2 max-sm:w-full sm:ml-auto">
           <button
             v-if="showTutorButton"
             type="button"
-            class="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-(--ra-md) border border-(--line-2) bg-(--bg-2) px-3 py-1.5 text-[13px] font-semibold text-(--fg-1) hover:border-(--brand-blue)"
+            class="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-(--ra-md) border border-(--line-2) bg-(--bg-2) px-3 py-1.5 text-[13px] font-semibold text-(--fg-1) hover:border-(--brand-blue)"
             @click="tutorOpen = true"
           >
             <Sparkles :size="14" class="text-(--brand-blue)" /> Ask the tutor
@@ -1006,11 +1007,12 @@ watch(() => route.params.id, load, { immediate: true })
           <button
             v-if="showQAButton"
             type="button"
-            :class="[showTutorButton ? '' : 'ml-auto', 'inline-flex cursor-pointer items-center gap-1.5 rounded-(--ra-md) border border-(--line-2) bg-(--bg-2) px-3 py-1.5 text-[13px] font-semibold text-(--fg-1) hover:border-(--brand-blue)']"
+            class="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-(--ra-md) border border-(--line-2) bg-(--bg-2) px-3 py-1.5 text-[13px] font-semibold text-(--fg-1) hover:border-(--brand-blue)"
             @click="qaOpen = true"
           >
             <MessagesSquare :size="14" class="text-(--brand-blue)" /> Questions
           </button>
+          </div>
         </div>
 
         <h1 class="m-0 text-[32px] font-bold text-(--fg-1) tracking-[-0.01em]">{{ String(selectedFlat.index + 1).padStart(2, '0') }}. {{ selectedFlat.lesson.title }}</h1>

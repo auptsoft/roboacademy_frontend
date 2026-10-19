@@ -152,6 +152,11 @@ export function addGroupMember(groupId: string, userId: string) {
   return apiFetch<null>(`/api/community/groups/${groupId}/members`, { method: 'POST', body: JSON.stringify({ userId }) })
 }
 
+/** Learners in the group's class who aren't in it yet (leader or class staff). */
+export function listGroupCandidates(groupId: string, search = '') {
+  return apiFetch<Contact[]>(`/api/community/groups/${groupId}/candidates${search ? `?search=${encodeURIComponent(search)}` : ''}`)
+}
+
 export function removeGroupMember(groupId: string, userId: string) {
   return apiFetch<null>(`/api/community/groups/${groupId}/members/${userId}`, { method: 'DELETE' })
 }
